@@ -1,0 +1,10 @@
+{
+  "ts_bucket": "test-bucket",
+  "ts_base_prefix": "retention-3days/tiered_storage_test",
+  "overrides": {
+    "test_topic_2": {
+      "ts_bucket": "test-bucket-2",
+      "ts_base_prefix": "retention-365days/tiered_storage_test"
+    }
+  }
+}
