@@ -43,10 +43,10 @@ unpredictable spikes in consumption patterns without affecting the broker.
 waiting for Kafka upgrades. Improvements, bug fixes, and new features are released independently of Kafka releases.
 
 # Highlights
-- **Kafka Broker Independent**: The tiered storage solution is designed to be Kafka broker independent, meaning it runs as an independent process alongside the Kafka server process. Currently, it only supports ZooKeeper-based Kafka versions. KRaft support is WIP.
+- **Kafka Broker Independent**: The tiered storage solution is designed to be Kafka broker-independent. [Here's why we think it's better](#broker-independent-vs-native-tiered-storage).
 - **Fault Tolerant**: Broker restarts, replacements, leadership changes, and other common Kafka operations / issues are handled gracefully.
 - **Skip the broker entirely during consumption**: The consumer can read from both broker and Tiered Storage backend filesystem. When in `TIERED_STORAGE_ONLY` mode, the consumption loop does not touch the broker itself, allowing for reduction in broker resource utilization.
-- **Pluggable Storage Backends**: The framework is designed to be backend-agnostic. Currently, only S3 is supported. More backend filesystems will be supported in the near future.
+- **Pluggable Storage Backends**: The framework is designed to be backend-agnostic.
 - **S3 Partitioning**: Prefix-entropy (salting) is configurable out-of-the-box to allow for prefix-partitioned S3 buckets, allowing for better scalability by avoiding request rate hotspots.
 - **Metrics**: Comprehensive metrics are provided out-of-the-box for monitoring and alerting purposes.
 
