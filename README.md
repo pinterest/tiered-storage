@@ -27,19 +27,23 @@ With Tiered Storage, you can:
 
 ## Broker-Independent vs. Native Tiered Storage
 [KIP-405](https://cwiki.apache.org/confluence/display/KAFKA/KIP-405%3A+Kafka+Tiered+Storage?uclick_id=11f222c6-967b-4935-98a9-cc88aafad7f5)
-provides a native, open-source offering to Tiered Storage for Kafka and is available for early access in Apache Kafka 3.6.0.
+provides a native, open-source offering to Tiered Storage for Kafka and is available starting from Apache Kafka 3.6.0.
 The native Tiered Storage implementation is broker-dependent, meaning that the broker process itself is responsible 
 for offloading finalized log segments to remote storage, and the broker is always in the critical path of consumption.
 
-**Our implementation of Kafka Tiered Storage is broker-independent**, meaning that the tiered storage process runs as a separate process alongside the Kafka server process,
+**This implementation of Kafka Tiered Storage is broker-independent**, meaning that the tiered storage process runs as a separate process alongside the Kafka server process,
 and the broker is not always in the critical path of consumption.
 This allows for more flexibility in adopting tiered storage, and accommodates more unpredictable consumption patterns. 
-Some of the key advantages of our broker-independent approach are:
+Some of the key advantages of a broker-independent approach are:
 
-1. **You don't need to upgrade brokers**: While the native offering requires upgrading brokers to a version that supports Tiered Storage, our broker-independent approach does not.
+1. **You don't need to upgrade brokers**: While the native offering requires upgrading brokers to a version that supports Tiered Storage, a broker-independent approach does not.
 2. **You can skip the broker entirely during consumption**: When in `TIERED_STORAGE_ONLY` mode, the consumption loop does not touch the broker itself, allowing for more
 unpredictable spikes in consumption patterns without affecting the broker.
-3. **Faster adoption, iteration, and improvements**: Our broker-independent Tiered Storage solution lets you adopt and upgrade Tiered Storage without
+3. **Support consumer backfills and replays without affecting broker CPU**: When the broker is out of the critical path of consumption,
+consumer backfills and replays can be done without needing to keep additional CPU buffer on the brokers just to support those surges.
+4. **Avoid cross-AZ transfer costs**: While the native approach adds a cross-AZ network cost factor for consumers that are not AZ-aware,
+this broker-independent approach avoids that cost for all consumers when reading directly from remote storage.
+5. **Faster adoption, iteration, and improvements**: A broker-independent Tiered Storage solution lets you adopt and upgrade Tiered Storage without
 waiting for Kafka upgrades. Improvements, bug fixes, and new features are released independently of Kafka releases.
 
 # Highlights
