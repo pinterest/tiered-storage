@@ -97,3 +97,6 @@ Check out some of the other Pinterest projects designed to make PubSub more auto
 
 # License
 Pinterest Tiered Storage for Apache Kafka® is distributed under Apache License, Version 2.0.
+
+# Trademark
+Apache®️, Apache Kafka, and Kafka are trademarks of the Apache Software Foundation.
