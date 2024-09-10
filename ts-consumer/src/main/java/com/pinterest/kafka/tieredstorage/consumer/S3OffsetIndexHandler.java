@@ -22,6 +22,23 @@ public class S3OffsetIndexHandler {
     private static S3Client s3Client = S3Client.builder().region(S3Utils.REGION).build();
 
     /**
+     * Returns the Kafka offset at the given byte position in the log segment.
+     * @param s3Path S3 path of the log segment
+     * @param position byte position in the log segment
+     * @return Kafka offset at the given byte position in the log segment
+     */
+    public static long getOffsetAtPosition(Triple<String, String, Long> s3Path, int position) {
+        String logFileKey = s3Path.getMiddle();
+        String noExtensionFileKey = logFileKey.substring(0, logFileKey.lastIndexOf("."));
+        long baseOffset = Long.parseLong(noExtensionFileKey.substring(noExtensionFileKey.lastIndexOf("/") + 1));
+        String indexFileKey =  noExtensionFileKey + ".index";
+        GetObjectRequest getObjectRequest = GetObjectRequest.builder().bucket(s3Path.getLeft()).key(indexFileKey).build();
+        byte[] indexFileBytes = s3Client.getObject(getObjectRequest, ResponseTransformer.toBytes()).asByteArray();
+        ByteBuffer indexFileByteBuffer = ByteBuffer.wrap(indexFileBytes);
+        return baseOffset + indexFileByteBuffer.getInt(position);
+    }
+
+    /**
      * Returns the minimum byte position in the log segment given the Kafka offset of interest.
      * @param s3Path S3 path of the log segment
      * @param offsetOfInterest Kafka offset of interest

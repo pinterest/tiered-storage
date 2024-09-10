@@ -4,6 +4,7 @@ import com.pinterest.kafka.tieredstorage.common.discovery.s3.S3StorageServiceEnd
 import com.pinterest.kafka.tieredstorage.common.metrics.MetricsConfiguration;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.serialization.Deserializer;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 
@@ -18,15 +19,15 @@ import java.util.Set;
 /**
  * S3Consumer is a consumer that reads data from S3.
  */
-public class S3Consumer {
+public class S3Consumer<K, V> {
     private static final Logger LOG = LogManager.getLogger(S3Consumer.class.getName());
     private final Map<String, S3StorageServiceEndpoint.Builder> s3Location = new HashMap<>();
     private final Set<TopicPartition> assignment = new HashSet<>();
-    private final S3PartitionsConsumer s3PartitionsConsumer;
+    private final S3PartitionsConsumer<K, V> s3PartitionsConsumer;
     private Map<TopicPartition, Long> positions;
 
-    public S3Consumer(String consumerGroup, Properties properties, MetricsConfiguration metricsConfiguration) {
-        this.s3PartitionsConsumer = new S3PartitionsConsumer(consumerGroup, properties, metricsConfiguration);
+    public S3Consumer(String consumerGroup, Properties properties, MetricsConfiguration metricsConfiguration, Deserializer<K> keyDeserializer, Deserializer<V> valueDeserializer) {
+        this.s3PartitionsConsumer = new S3PartitionsConsumer<>(consumerGroup, properties, metricsConfiguration, keyDeserializer, valueDeserializer);
     }
 
     /**
@@ -102,14 +103,22 @@ public class S3Consumer {
      * @param maxRecordsToConsume the maximum number of records to consume
      * @return the {@link ConsumerRecords} consumed from S3
      */
-    public ConsumerRecords<byte[], byte[]> poll(int maxRecordsToConsume) {
-        ConsumerRecords<byte[], byte[]> records = s3PartitionsConsumer.poll(maxRecordsToConsume);
+    public ConsumerRecords<K, V> poll(int maxRecordsToConsume) {
+        ConsumerRecords<K, V> records = s3PartitionsConsumer.poll(maxRecordsToConsume);
         setPositions(s3PartitionsConsumer.getPositions());
         return records;
     }
 
     public Map<TopicPartition, Long> getPositions() {
         return this.positions;
+    }
+
+    public void pause(Collection<TopicPartition> partitions) {
+        s3PartitionsConsumer.pause(partitions);
+    }
+
+    public void resume(Collection<TopicPartition> partitions) {
+        s3PartitionsConsumer.resume(partitions);
     }
 
     /**

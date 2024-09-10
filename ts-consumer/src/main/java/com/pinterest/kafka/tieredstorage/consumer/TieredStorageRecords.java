@@ -20,10 +20,6 @@ public class TieredStorageRecords<K, V> {
     public TieredStorageRecords() {
     }
 
-    public void addRecords(Map<TopicPartition, List<ConsumerRecord<K, V>>> newRecords) {
-        newRecords.keySet().forEach(key -> addRecords(key, newRecords.get(key)));
-    }
-
     public void addRecords(TopicPartition topicPartition, List<ConsumerRecord<K, V>> partitionRecords) {
         if (records.containsKey(topicPartition))
             records.get(topicPartition).addAll(partitionRecords);

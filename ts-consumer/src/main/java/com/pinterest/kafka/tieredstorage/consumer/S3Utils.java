@@ -29,6 +29,10 @@ public class S3Utils {
     private static final Pattern pattern = Pattern.compile(S3_PATH_REGEX, Pattern.MULTILINE);
     private static S3Client s3Client = S3Client.builder().region(REGION).build();
 
+    enum KafkaFileType {
+        LOG, INDEX, TIMEINDEX
+    };
+
     /**
      * Returns a zero-padded offset string in the same format as Kafka's log segment file names
      * @param offset

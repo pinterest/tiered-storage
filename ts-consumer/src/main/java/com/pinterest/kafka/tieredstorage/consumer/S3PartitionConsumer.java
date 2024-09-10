@@ -5,13 +5,16 @@ import com.pinterest.kafka.tieredstorage.common.metrics.MetricsConfiguration;
 import org.apache.commons.lang3.tuple.Triple;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
 import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.annotation.InterfaceStability;
 import org.apache.kafka.common.header.Headers;
 import org.apache.kafka.common.header.internals.RecordHeaders;
 import org.apache.kafka.common.record.Record;
 import org.apache.kafka.common.record.S3ChannelRecordBatch;
 import org.apache.kafka.common.record.S3Records;
 import org.apache.kafka.common.record.TimestampType;
+import org.apache.kafka.common.serialization.Deserializer;
 import org.apache.kafka.common.utils.Utils;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
@@ -29,10 +32,9 @@ import java.util.TreeMap;
 /**
  * Consumes Kafka records in a given Kafka partition from S3
  */
-public class S3PartitionConsumer {
+public class S3PartitionConsumer<K, V> {
     private static final Logger LOG = LogManager.getLogger(S3PartitionConsumer.class.getName());
     private static final long DEFAULT_S3_METADATA_RELOAD_INTERVAL_MS = 3600000; // 1 hour
-    private static final long DEFAULT_MAX_PARTITION_FETCH_SIZE_BYTES = 1048576;
     private String location;
     private final TopicPartition topicPartition;
     private long position;
@@ -49,15 +51,42 @@ public class S3PartitionConsumer {
     private String latestS3Object = null;
     private final S3OffsetIndexHandler s3OffsetIndexHandler = new S3OffsetIndexHandler();
     private final MetricsConfiguration metricsConfiguration;
+    private Deserializer<K> keyDeserializer;
+    private Deserializer<V> valueDeserializer;
 
     public S3PartitionConsumer(String location, TopicPartition topicPartition, String consumerGroup, Properties properties, MetricsConfiguration metricsConfiguration) {
+        this(location, topicPartition, consumerGroup, properties, metricsConfiguration, null, null);
+    }
+
+    public S3PartitionConsumer(String location, TopicPartition topicPartition, String consumerGroup, Properties properties, MetricsConfiguration metricsConfiguration, Deserializer<K> keyDeserializer, Deserializer<V> valueDeserializer) {
         this.location = location;
         this.topicPartition = topicPartition;
         this.consumerGroup = consumerGroup;
-        maxPartitionFetchSizeBytes = Integer.parseInt(properties.getProperty(ConsumerConfig.MAX_PARTITION_FETCH_BYTES_CONFIG, Long.toString(DEFAULT_MAX_PARTITION_FETCH_SIZE_BYTES)));
-        s3MetadataReloadIntervalMs = Long.parseLong(properties.getProperty(TieredStorageConsumerConfig.STORAGE_SERVICE_ENDPOINT_S3_METADATA_RELOAD_INTERVAL_MS_CONFIG, Long.toString(DEFAULT_S3_METADATA_RELOAD_INTERVAL_MS)));
+        ConsumerConfig consumerConfig = new ConsumerConfig(properties);
+        this.maxPartitionFetchSizeBytes = consumerConfig.getInt(ConsumerConfig.MAX_PARTITION_FETCH_BYTES_CONFIG);
+        this.s3MetadataReloadIntervalMs = Long.parseLong(properties.getProperty(TieredStorageConsumerConfig.STORAGE_SERVICE_ENDPOINT_S3_METADATA_RELOAD_INTERVAL_MS_CONFIG, Long.toString(DEFAULT_S3_METADATA_RELOAD_INTERVAL_MS)));
         this.metricsConfiguration = metricsConfiguration;
+        this.keyDeserializer = keyDeserializer;
+        this.valueDeserializer = valueDeserializer;
+        initializeDeserializers(consumerConfig);
         LOG.info(String.format("Created S3PartitionConsumer for %s with maxPartitionFetchSizeBytes=%s and s3MetadataReloadIntervalMs=%s", topicPartition, maxPartitionFetchSizeBytes, s3MetadataReloadIntervalMs));
+    }
+
+    private void initializeDeserializers(ConsumerConfig consumerConfig) {
+        // borrowed from KafkaConsumer
+        if (keyDeserializer == null) {
+            this.keyDeserializer = consumerConfig.getConfiguredInstance(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, Deserializer.class);
+            this.keyDeserializer.configure(consumerConfig.originals(), true);
+        } else {
+            consumerConfig.ignore(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG);
+        }
+        if (valueDeserializer == null) {
+            this.valueDeserializer = consumerConfig.getConfiguredInstance(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, Deserializer.class);
+            this.valueDeserializer.configure(consumerConfig.originals(), false);
+        } else {
+            consumerConfig.ignore(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG);
+        }
+        // /borrowed from KafkaConsumer
     }
 
     /**
@@ -177,7 +206,7 @@ public class S3PartitionConsumer {
      * @param maxRecords
      * @return list of {@link org.apache.kafka.clients.consumer.ConsumerRecords}
      */
-    public List<ConsumerRecord<byte[], byte[]>> poll(int maxRecords) {
+    public List<ConsumerRecord<K, V>> poll(int maxRecords) {
         return poll(maxRecords, false);
     }
 
@@ -187,7 +216,7 @@ public class S3PartitionConsumer {
      * @param shouldReadWholeObject
      * @return list of {@link org.apache.kafka.clients.consumer.ConsumerRecords}
      */
-    public List<ConsumerRecord<byte[], byte[]>> poll(int maxRecords, boolean shouldReadWholeObject) {
+    public List<ConsumerRecord<K, V>> poll(int maxRecords, boolean shouldReadWholeObject) {
         if (shouldReadWholeObject)
             LOG.debug(String.format("Trying to consume all records from each S3 object for %s", topicPartition));
         else
@@ -215,7 +244,7 @@ public class S3PartitionConsumer {
         }
 
         long lastSeenOffset = -1;
-        List<ConsumerRecord<byte[], byte[]>> records = new ArrayList<>();
+        List<ConsumerRecord<K, V>> records = new ArrayList<>();
         LOG.debug(String.format("For consuming from offset %s will be processing S3 object %s", position, s3Path));
         while (batches.hasNext() && (shouldReadWholeObject || (recordCount < maxRecords && fetchSizeBytes < maxPartitionFetchSizeBytes))) {
             S3ChannelRecordBatch batch = batches.next();
@@ -253,8 +282,8 @@ public class S3PartitionConsumer {
                         record.checksumOrNull() == null ? -1 : record.checksumOrNull(),
                         record.keySize(),
                         record.valueSize(),
-                        record.key() == null ? null : Utils.toArray(record.key()),
-                        record.value() == null ? null : Utils.toArray(record.value()),
+                        record.key() == null ? null : keyDeserializer.deserialize(topicPartition.topic(), Utils.toArray(record.key())),
+                        record.value() == null ? null : valueDeserializer.deserialize(topicPartition.topic(), Utils.toArray(record.value())),
                         headers
                 ));
                 ++recordCount;
@@ -364,6 +393,14 @@ public class S3PartitionConsumer {
         LOG.debug(String.format("Found S3 object: %s, next: %s", latestS3Object, s3ObjectNext));
         latestS3Object = latestS3Object.substring(0, latestS3Object.lastIndexOf("."));
         return s3Object;
+    }
+
+    @InterfaceStability.Evolving
+    public Map<TopicPartition, OffsetAndTimestamp> offsetForTime(Long timestamp, Long beginningOffset, Long endOffset) {
+        //TODO: This needs a delicate implementation to avoid listing the whole prefix, which is an expensive operation,
+        // if possible. A naive approach is to do a binary search since we have the first and last offset (log segment)
+        // on S3
+        throw new UnsupportedOperationException("offsetForTime is not implemented yet");
     }
 
     /**
