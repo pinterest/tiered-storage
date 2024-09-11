@@ -6,6 +6,7 @@ import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
+import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.zookeeper.KeeperException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -37,13 +38,13 @@ public class TestS3PartitionConsumer extends TestS3Base {
         S3Utils.overrideS3Client(s3Client);
         String metricsReporterClassName = NoOpMetricsReporter.class.getName();
         MetricsConfiguration metricsConfiguration = new MetricsConfiguration(metricsReporterClassName, null, null);
-        S3PartitionConsumer s3PartitionConsumer = new S3PartitionConsumer(getS3BasePrefixWithCluster(), new TopicPartition(KAFKA_TOPIC, 4), CONSUMER_GROUP, properties, metricsConfiguration);
+        S3PartitionConsumer<byte[], byte[]> s3PartitionConsumer = new S3PartitionConsumer<>(getS3BasePrefixWithCluster(), new TopicPartition(KAFKA_TOPIC, 4), CONSUMER_GROUP, properties, metricsConfiguration);
         assertEquals(100L, s3PartitionConsumer.beginningOffset());
         s3Client.deleteObject(DeleteObjectRequest.builder().bucket(S3_BUCKET).key(getS3ObjectKey(KAFKA_TOPIC, 4, 100L, FileType.LOG)).build());
         assertEquals(200L, s3PartitionConsumer.beginningOffset());
 
         // nonexistent offset for partition
-        S3PartitionConsumer s3PartitionConsumer2 = new S3PartitionConsumer(getS3BasePrefixWithCluster(), new TopicPartition(KAFKA_TOPIC, 6), CONSUMER_GROUP, properties, metricsConfiguration);
+        S3PartitionConsumer<byte[], byte[]> s3PartitionConsumer2 = new S3PartitionConsumer<>(getS3BasePrefixWithCluster(), new TopicPartition(KAFKA_TOPIC, 6), CONSUMER_GROUP, properties, metricsConfiguration);
         assertEquals(-1L, s3PartitionConsumer2.beginningOffset());
         putEmptyObjects(KAFKA_TOPIC, 6, 50L, 200L, 20L);
         assertEquals(50L, s3PartitionConsumer2.beginningOffset());
@@ -59,7 +60,7 @@ public class TestS3PartitionConsumer extends TestS3Base {
         S3Utils.overrideS3Client(s3Client);
         String metricsReporterClassName = NoOpMetricsReporter.class.getName();
         MetricsConfiguration metricsConfiguration = new MetricsConfiguration(metricsReporterClassName, null, null);
-        S3PartitionConsumer s3PartitionConsumer = new S3PartitionConsumer(getS3BasePrefixWithCluster(), new TopicPartition(KAFKA_TOPIC, 9), CONSUMER_GROUP, properties, metricsConfiguration);
+        S3PartitionConsumer<byte[], byte[]> s3PartitionConsumer = new S3PartitionConsumer<>(getS3BasePrefixWithCluster(), new TopicPartition(KAFKA_TOPIC, 9), CONSUMER_GROUP, properties, metricsConfiguration);
         assertEquals(1000L, s3PartitionConsumer.endOffset());
 
         putEmptyObjects(KAFKA_TOPIC, 9, 1100L, 1150L, 100L);
@@ -80,16 +81,17 @@ public class TestS3PartitionConsumer extends TestS3Base {
         S3OffsetIndexHandler.overrideS3Client(s3Client);
         String metricsReporterClassName = NoOpMetricsReporter.class.getName();
         MetricsConfiguration metricsConfiguration = new MetricsConfiguration(metricsReporterClassName, null, null);
-        S3PartitionConsumer s3PartitionConsumer = new S3PartitionConsumer(getS3BasePrefixWithCluster(), new TopicPartition("test_topic_a", 0), CONSUMER_GROUP, properties, metricsConfiguration);
-        List<ConsumerRecord<byte[], byte[]>> records;
+        S3PartitionConsumer<String, String> s3PartitionConsumer = new S3PartitionConsumer<>(getS3BasePrefixWithCluster(), new TopicPartition("test_topic_a", 0), CONSUMER_GROUP, properties, metricsConfiguration,
+                new StringDeserializer(), new StringDeserializer());
+        List<ConsumerRecord<String, String>> records;
         int numRecords = 0;
         while (!(records = s3PartitionConsumer.poll(100)).isEmpty()) {
-            for (ConsumerRecord<byte[], byte[]> record : records) {
+            for (ConsumerRecord<String, String> record : records) {
                 String currRecordNumString = String.valueOf(numRecords);
 
                 // known record values
-                assertEquals(currRecordNumString, new String(record.key()));
-                assertEquals("val-" + currRecordNumString, new String(record.value()));
+                assertEquals(currRecordNumString, record.key());
+                assertEquals("val-" + currRecordNumString, record.value());
                 assertEquals("header1", record.headers().headers("header1").iterator().next().key());
                 assertEquals("header1-val", new String(record.headers().headers("header1").iterator().next().value()));
 

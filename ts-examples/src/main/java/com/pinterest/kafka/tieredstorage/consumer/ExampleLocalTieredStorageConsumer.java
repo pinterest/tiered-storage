@@ -12,6 +12,7 @@ import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.errors.InterruptException;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
+import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 
@@ -26,7 +27,7 @@ public class ExampleLocalTieredStorageConsumer {
     private static final String TOPIC_OPT = "t";
     private static final String PARTITION_OPT = "p";
 
-    private static TieredStorageConsumer tsConsumer;
+    private static TieredStorageConsumer<String, String> tsConsumer;
 
     public static void main(String[] args) throws ParseException, ClassNotFoundException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException, IOException, InterruptedException {
 
@@ -65,8 +66,10 @@ public class ExampleLocalTieredStorageConsumer {
         properties.setProperty(TieredStorageConsumerConfig.KAFKA_CLUSTER_ID_CONFIG, "my_test_kafka_cluster");
         properties.setProperty(TieredStorageConsumerConfig.OFFSET_RESET_CONFIG, TieredStorageConsumer.OffsetReset.EARLIEST.toString());
         properties.setProperty(TieredStorageConsumerConfig.STORAGE_SERVICE_ENDPOINT_PROVIDER_CLASS_CONFIG, ExampleS3StorageServiceEndpointProvider.class.getName());
+        properties.setProperty(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
+        properties.setProperty(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
         properties.setProperty(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
-        tsConsumer = new TieredStorageConsumer(properties);
+        tsConsumer = new TieredStorageConsumer<>(properties);
 
         TopicPartition tp = new TopicPartition(topic, partition);
         tsConsumer.assign(Collections.singleton(tp));
@@ -74,8 +77,7 @@ public class ExampleLocalTieredStorageConsumer {
 
         try {
             while (true) {
-                LOG.info("Polling...");
-                ConsumerRecords<byte[], byte[]> records = tsConsumer.poll(Duration.ofMillis(100));
+                ConsumerRecords<String, String> records = tsConsumer.poll(Duration.ofMillis(100));
                 if (records.count() == 0) {
                     LOG.info("No records polled");
                     Thread.sleep(1000);

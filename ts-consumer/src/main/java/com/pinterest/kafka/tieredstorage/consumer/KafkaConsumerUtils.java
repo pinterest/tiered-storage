@@ -2,10 +2,12 @@ package com.pinterest.kafka.tieredstorage.consumer;
 
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
+import org.apache.kafka.clients.consumer.OffsetCommitCallback;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 
+import java.time.Duration;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -18,12 +20,22 @@ import java.util.Set;
 public class KafkaConsumerUtils {
     private static final Logger LOG = LogManager.getLogger(KafkaConsumerUtils.class.getName());
 
-    public static void commitSync(@SuppressWarnings("rawtypes") KafkaConsumer kafkaConsumer, Map<TopicPartition, Long> offsets) {
+    public static Map<TopicPartition, OffsetAndMetadata> getOffsetsAndMetadata(Map<TopicPartition, Long> offsets) {
         Map<TopicPartition, OffsetAndMetadata> offsetsToCommit = new HashMap<>();
         offsets.forEach((key, value) -> offsetsToCommit.put(key, new OffsetAndMetadata(value)));
-        kafkaConsumer.commitSync(offsetsToCommit);
-        offsets.forEach((key, value) -> kafkaConsumer.seek(key, value + 1));
-        LOG.info("Committed offsets: " + offsetsToCommit);
+        return offsetsToCommit;
+    }
+
+    public static void commitSync(@SuppressWarnings("rawtypes") KafkaConsumer kafkaConsumer, Map<TopicPartition, OffsetAndMetadata> offsets, Duration timeout) {
+        kafkaConsumer.commitSync(offsets, timeout);
+        offsets.forEach((key, value) -> kafkaConsumer.seek(key, value.offset() + 1));
+        LOG.info("Committed offsets: " + offsets);
+    }
+
+    public static void commitAsync(@SuppressWarnings("rawtypes") KafkaConsumer kafkaConsumer, Map<TopicPartition, OffsetAndMetadata> offsets, OffsetCommitCallback callback) {
+        kafkaConsumer.commitAsync(offsets, callback);
+        offsets.forEach((key, value) -> kafkaConsumer.seek(key, value.offset() + 1));
+        LOG.info("Committed offsets: " + offsets);
     }
 
     public static void resetOffsetToLatest(@SuppressWarnings("rawtypes") KafkaConsumer kafkaConsumer, TopicPartition topicPartition) {

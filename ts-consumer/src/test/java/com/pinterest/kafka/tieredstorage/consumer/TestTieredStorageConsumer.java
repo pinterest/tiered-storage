@@ -7,9 +7,7 @@ import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.consumer.OffsetOutOfRangeException;
 import org.apache.kafka.common.TopicPartition;
-import org.apache.kafka.common.serialization.ByteArrayDeserializer;
-import org.apache.log4j.LogManager;
-import org.apache.log4j.Logger;
+import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.zookeeper.KeeperException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -44,10 +42,9 @@ import static org.mockito.Mockito.when;
 @MockitoSettings(strictness = Strictness.LENIENT)
 public class TestTieredStorageConsumer extends TestS3Base {
 
-    private static final Logger LOG = LogManager.getLogger(TestTieredStorageConsumer.class.getName());
     private static final String TEST_CLUSTER_2 = "test-cluster-2";
     private static final String TEST_TOPIC_A = "test_topic_a";
-    private static TieredStorageConsumer tsConsumer;
+    private static TieredStorageConsumer<String, String> tsConsumer;
 
     @BeforeEach
     @Override
@@ -69,19 +66,18 @@ public class TestTieredStorageConsumer extends TestS3Base {
 
     /**
      * Test that the consumer assigned to a single topic partition can consume records from Kafka only
-     * @throws InterruptedException
      */
     @Test
-    void testSingleTopicPartitionAssignConsumptionNoS3() throws InterruptedException {
+    void testSingleTopicPartitionAssignConsumptionNoS3() {
         TopicPartition tp = new TopicPartition(TEST_TOPIC_A, 0);
         tsConsumer.assign(Collections.singleton(tp));
-        ConsumerRecords<byte[], byte[]> records = tsConsumer.poll(Duration.ofMillis(100));
+        ConsumerRecords<String, String> records = tsConsumer.poll(Duration.ofMillis(100));
         assertEquals(0, records.count());
 
         sendTestData(TEST_TOPIC_A, 0, 100);
 
-        List<ConsumerRecord<byte[], byte[]>> consumed = new ArrayList<>();
-        List<ConsumerRecord<byte[], byte[]>> tpRecords = null;
+        List<ConsumerRecord<String, String>> consumed = new ArrayList<>();
+        List<ConsumerRecord<String, String>> tpRecords = null;
 
         while (consumed.size() < 100) {
             records = tsConsumer.poll(Duration.ofMillis(100));
@@ -120,18 +116,17 @@ public class TestTieredStorageConsumer extends TestS3Base {
 
     /**
      * Test subscribe consumption from Kafka only
-     * @throws InterruptedException
      */
     @Test
-    void testSingleTopicSubscribeConsumptionNoS3() throws InterruptedException {
+    void testSingleTopicSubscribeConsumptionNoS3() {
         tsConsumer.subscribe(Collections.singleton(TEST_TOPIC_A));
         sendTestData(TEST_TOPIC_A, 0, 100);
         sendTestData(TEST_TOPIC_A, 1, 100);
         sendTestData(TEST_TOPIC_A, 2, 100);
 
-        List<ConsumerRecord<byte[], byte[]>> consumed = new ArrayList<>();
+        List<ConsumerRecord<String, String>> consumed = new ArrayList<>();
         while (consumed.size() < 300) {
-            ConsumerRecords<byte[], byte[]> records = tsConsumer.poll(Duration.ofMillis(100));
+            ConsumerRecords<String, String> records = tsConsumer.poll(Duration.ofMillis(100));
             records.forEach(consumed::add);
         }
 
@@ -139,7 +134,7 @@ public class TestTieredStorageConsumer extends TestS3Base {
         int p0Count = 0;
         int p1Count = 0;
         int p2Count = 0;
-        for (ConsumerRecord<byte[], byte[]> record : consumed) {
+        for (ConsumerRecord<String, String> record : consumed) {
             if (record.partition() == 0)
                 p0Count++;
             if (record.partition() == 1)
@@ -158,7 +153,7 @@ public class TestTieredStorageConsumer extends TestS3Base {
 
         consumed.clear();
         while (consumed.size() < 1000) {
-            ConsumerRecords<byte[], byte[]> records = tsConsumer.poll(Duration.ofMillis(100));
+            ConsumerRecords<String, String> records = tsConsumer.poll(Duration.ofMillis(100));
             records.forEach(consumed::add);
         }
 
@@ -166,7 +161,7 @@ public class TestTieredStorageConsumer extends TestS3Base {
         p0Count = 0;
         p1Count = 0;
         p2Count = 0;
-        for (ConsumerRecord<byte[], byte[]> record : consumed) {
+        for (ConsumerRecord<String, String> record : consumed) {
             if (record.partition() == 0)
                 p0Count++;
             if (record.partition() == 1)
@@ -186,10 +181,9 @@ public class TestTieredStorageConsumer extends TestS3Base {
 
     /**
      * Testing that seek correctly sets the position for the partition
-     * @throws InterruptedException
      */
     @Test
-    void testSeek() throws InterruptedException {
+    void testSeek() {
         Collection<TopicPartition> toAssign = new HashSet<>(Arrays.asList(new TopicPartition(TEST_TOPIC_A, 0), new TopicPartition(TEST_TOPIC_A, 2)));
         tsConsumer.assign(toAssign);
         sendTestData(TEST_TOPIC_A, 0, 100);
@@ -198,9 +192,9 @@ public class TestTieredStorageConsumer extends TestS3Base {
 
         tsConsumer.seek(new TopicPartition(TEST_TOPIC_A, 0), 20L);
 
-        List<ConsumerRecord<byte[], byte[]>> consumed = new ArrayList<>();
+        List<ConsumerRecord<String, String>> consumed = new ArrayList<>();
         while (consumed.size() < 180) {
-            ConsumerRecords<byte[], byte[]> records = tsConsumer.poll(Duration.ofMillis(100));
+            ConsumerRecords<String, String> records = tsConsumer.poll(Duration.ofMillis(100));
             records.forEach(consumed::add);
         }
 
@@ -209,7 +203,7 @@ public class TestTieredStorageConsumer extends TestS3Base {
         int p0Count = 0;
         int p1Count = 0;
         int p2Count = 0;
-        for (ConsumerRecord<byte[], byte[]> record : consumed) {
+        for (ConsumerRecord<String, String> record : consumed) {
             if (record.partition() == 0)
                 p0Count++;
             if (record.partition() == 1)
@@ -228,7 +222,7 @@ public class TestTieredStorageConsumer extends TestS3Base {
         tsConsumer.seek(new TopicPartition(TEST_TOPIC_A, 2), 20L);
         consumed.clear();
         while (consumed.size() < 80) {
-            ConsumerRecords<byte[], byte[]> records = tsConsumer.poll(Duration.ofMillis(100));
+            ConsumerRecords<String, String> records = tsConsumer.poll(Duration.ofMillis(100));
             records.forEach(consumed::add);
         }
 
@@ -236,7 +230,7 @@ public class TestTieredStorageConsumer extends TestS3Base {
         p0Count = 0;
         p1Count = 0;
         p2Count = 0;
-        for (ConsumerRecord<byte[], byte[]> record : consumed) {
+        for (ConsumerRecord<String, String> record : consumed) {
             if (record.partition() == 0)
                 p0Count++;
             if (record.partition() == 1)
@@ -256,11 +250,10 @@ public class TestTieredStorageConsumer extends TestS3Base {
 
     /**
      * Test that the consumer can consume records from S3 only
-     * @throws InterruptedException
      * @throws IOException
      */
     @Test
-    void testTieredStorageConsumption() throws InterruptedException, IOException {
+    void testTieredStorageConsumption() throws IOException {
         prepareS3Mocks();
         putObjects(TEST_CLUSTER_2, TEST_TOPIC_A, 0, "src/test/resources/log-files/test_topic_a-0");
         tsConsumer.assign(Collections.singleton(new TopicPartition(TEST_TOPIC_A, 0)));
@@ -270,15 +263,15 @@ public class TestTieredStorageConsumer extends TestS3Base {
         }}));
         tsConsumer.setKafkaConsumer(outOfRangeKafkaConsumer);
 
-        ConsumerRecords<byte[], byte[]> records;
+        ConsumerRecords<String, String> records;
         int consumed = 0;
         while ((records = tsConsumer.poll(Duration.ofMillis(100))).count() > 0) {
-            for (ConsumerRecord<byte[], byte[]> record : records) {
+            for (ConsumerRecord<String, String> record : records) {
                 String currRecordNumString = String.valueOf(consumed);
 
                 // known record values
-                assertEquals(currRecordNumString, new String(record.key()));
-                assertEquals("val-" + currRecordNumString, new String(record.value()));
+                assertEquals(currRecordNumString, record.key());
+                assertEquals("val-" + currRecordNumString, record.value());
                 assertEquals("header1", record.headers().headers("header1").iterator().next().key());
                 assertEquals("header1-val", new String(record.headers().headers("header1").iterator().next().value()));
                 consumed++;
@@ -293,16 +286,15 @@ public class TestTieredStorageConsumer extends TestS3Base {
     /**
      * Test that the consumer can consume records, first from Kafka, then from S3
      * @throws IOException
-     * @throws InterruptedException
      */
     @Test
-    void testKafkaToTieredStorageConsumption() throws IOException, InterruptedException {
+    void testKafkaToTieredStorageConsumption() throws IOException {
         int numRecords = 5000;
         TopicPartition tp = new TopicPartition(TEST_TOPIC_A, 0);
         tsConsumer.assign(Collections.singleton(new TopicPartition(TEST_TOPIC_A, 0)));
         sendTestData(TEST_TOPIC_A, 0, numRecords);
         int consumed = 0;
-        ConsumerRecords<byte[], byte[]> records;
+        ConsumerRecords<String, String> records;
         while (!(records = tsConsumer.poll(Duration.ofMillis(100))).isEmpty() || consumed == 0) {
             consumed += records.count();
         }
@@ -331,17 +323,16 @@ public class TestTieredStorageConsumer extends TestS3Base {
     /**
      * Test that the consumer can consume records, first from S3, then from Kafka
      * @throws IOException
-     * @throws InterruptedException
      */
     @Test
-    void testTieredStorageToKafkaConsumption() throws IOException, InterruptedException {
+    void testTieredStorageToKafkaConsumption() throws IOException {
         int numRecords = 5000;
         TopicPartition tp = new TopicPartition(TEST_TOPIC_A, 0);
         tsConsumer.assign(Collections.singleton(new TopicPartition(TEST_TOPIC_A, 0)));
         sendTestData(TEST_TOPIC_A, 0, numRecords);
         int consumed = 0;
-        ConsumerRecords<byte[], byte[]> records;
-        KafkaConsumer<byte[], byte[]> actualKafkaConsumer = tsConsumer.getKafkaConsumer();
+        ConsumerRecords<String, String> records;
+        KafkaConsumer<String, String> actualKafkaConsumer = tsConsumer.getKafkaConsumer();
 
         prepareS3Mocks();
         putObjects(TEST_CLUSTER_2, TEST_TOPIC_A, 0, "src/test/resources/log-files/test_topic_a-0");
@@ -354,7 +345,7 @@ public class TestTieredStorageConsumer extends TestS3Base {
         while (consumed < numRecords * 0.2 && !(records = tsConsumer.poll(Duration.ofMillis(100))).isEmpty()) {
             consumed += records.count();
         }
-        long pos = tsConsumer.getPositions().get(tp);
+        long pos = tsConsumer.position(tp);
         assertEquals(pos, consumed);
 
         // next consumption should be from Kafka
@@ -380,27 +371,27 @@ public class TestTieredStorageConsumer extends TestS3Base {
         // put s3 objects starting at offset 1000
         putEmptyObjects(TEST_CLUSTER_2, TEST_TOPIC_A, 0, 1000, 1000, 1000);
 
-        tsConsumer.addS3LocationsForTopics(Collections.singleton(TEST_TOPIC_A));
+        tsConsumer.setTieredStorageLocations(Collections.singleton(TEST_TOPIC_A));
         tsConsumer.getS3Consumer().assign(Collections.singleton(new TopicPartition(TEST_TOPIC_A, 0)));
         Map<TopicPartition, Long> offsets = tsConsumer.getS3Consumer().beginningOffsets(Collections.singleton(new TopicPartition(TEST_TOPIC_A, 0)));
         assertEquals(1000L, offsets.get(new TopicPartition(TEST_TOPIC_A, 0)));
         tsConsumer.close();
     }
 
-    private void assertNoMoreRecords(Duration checkTime) throws InterruptedException {
+    private void assertNoMoreRecords(Duration checkTime) {
         long begin = System.currentTimeMillis();
         while (System.currentTimeMillis() - begin < checkTime.toMillis()) {
             assertEquals(0, tsConsumer.poll(Duration.ofMillis(100)).count());
         }
     }
 
-    private static TieredStorageConsumer getTieredStorageConsumer() throws IOException, ClassNotFoundException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
+    private static TieredStorageConsumer<String, String> getTieredStorageConsumer() throws IOException, ClassNotFoundException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
         String bootstrapServers = sharedKafkaTestResource.getKafkaConnectString();
 
         Properties properties = new Properties();
         properties.setProperty(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
-        properties.setProperty(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class.getName());
-        properties.setProperty(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class.getName());
+        properties.setProperty(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
+        properties.setProperty(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
         properties.setProperty(ConsumerConfig.GROUP_ID_CONFIG, "test-consumer-group");
         properties.setProperty(ConsumerConfig.CLIENT_ID_CONFIG, "tiered-storage-client-id");
         properties.setProperty(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, "20000");
@@ -410,6 +401,6 @@ public class TestTieredStorageConsumer extends TestS3Base {
         properties.setProperty(TieredStorageConsumerConfig.OFFSET_RESET_CONFIG, TieredStorageConsumer.OffsetReset.EARLIEST.toString());
         properties.setProperty(TieredStorageConsumerConfig.STORAGE_SERVICE_ENDPOINT_PROVIDER_CLASS_CONFIG, MockS3StorageServiceEndpointProvider.class.getName());
         properties.setProperty(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
-        return new TieredStorageConsumer(properties);
+        return new TieredStorageConsumer<>(properties);
     }
 }

@@ -31,6 +31,7 @@ public class AssignmentAwareConsumerRebalanceListener implements ConsumerRebalan
     private final Map<TopicPartition, Long> committed;
     private final TieredStorageConsumer.OffsetReset offsetReset;
     private final AtomicBoolean isPartitionAssignmentComplete = new AtomicBoolean(true);
+    private ConsumerRebalanceListener customListener = null;
 
     public AssignmentAwareConsumerRebalanceListener(
             KafkaConsumer kafkaConsumer, String consumerGroup, Properties properties,
@@ -45,6 +46,10 @@ public class AssignmentAwareConsumerRebalanceListener implements ConsumerRebalan
         this.offsetReset = offsetReset;
     }
 
+    protected void setCustomRebalanceListener(ConsumerRebalanceListener customListener) {
+        this.customListener = customListener;
+    }
+
     @Override
     public void onPartitionsRevoked(Collection<TopicPartition> collection) {
         isPartitionAssignmentComplete.set(false);
@@ -52,6 +57,8 @@ public class AssignmentAwareConsumerRebalanceListener implements ConsumerRebalan
         this.assignment.removeAll(collection);
         collection.forEach(position::remove);
         isPartitionAssignmentComplete.set(true);
+        if (customListener != null)
+            customListener.onPartitionsRevoked(collection);
     }
 
     @Override
@@ -88,6 +95,8 @@ public class AssignmentAwareConsumerRebalanceListener implements ConsumerRebalan
             adminClient.close();
         }
         isPartitionAssignmentComplete.set(true);
+        if (customListener != null)
+            customListener.onPartitionsAssigned(collection);
         LOG.info("Completed onPartitionsAssigned.");
     }
 
