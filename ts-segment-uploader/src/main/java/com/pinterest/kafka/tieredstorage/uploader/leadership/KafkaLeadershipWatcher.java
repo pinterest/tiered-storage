@@ -96,6 +96,13 @@ public class KafkaLeadershipWatcher {
                 applyCurrentState();
             } catch (Exception e) {
                 LOG.error("Caught exception while applying current state", e);
+                MetricRegistryManager.getInstance(config.getMetricsConfiguration()).incrementCounter(
+                        null,
+                        null,
+                        UploaderMetrics.WATCHER_ZK_EXCEPTION_METRIC,
+                        "cluster=" + environmentProvider.clusterId(),
+                        "broker=" + environmentProvider.brokerId()
+                );
             }
         }, config.getZkWatcherPollIntervalSeconds(), config.getZkWatcherPollIntervalSeconds(), java.util.concurrent.TimeUnit.SECONDS);
     }
