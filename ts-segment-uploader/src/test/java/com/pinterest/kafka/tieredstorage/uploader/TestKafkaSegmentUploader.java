@@ -3,7 +3,6 @@ package com.pinterest.kafka.tieredstorage.uploader;
 import com.pinterest.kafka.tieredstorage.common.discovery.s3.S3StorageServiceEndpoint;
 import com.pinterest.kafka.tieredstorage.common.discovery.s3.S3StorageServiceEndpointProvider;
 import com.salesforce.kafka.test.junit5.SharedKafkaTestResource;
-import org.apache.commons.configuration2.ex.ConfigurationException;
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
@@ -12,7 +11,6 @@ import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.header.internals.RecordHeader;
 import org.apache.kafka.common.header.internals.RecordHeaders;
 import org.apache.kafka.common.serialization.ByteArraySerializer;
-import org.apache.zookeeper.KeeperException;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -26,7 +24,6 @@ import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.lang.reflect.InvocationTargetException;
 import java.nio.charset.StandardCharsets;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
@@ -49,42 +46,9 @@ public class TestKafkaSegmentUploader extends TestBase {
 
     @Override
     @BeforeEach
-    void setup() throws InterruptedException, IOException, KeeperException, ConfigurationException, ExecutionException, ClassNotFoundException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
+    public void setup() throws Exception {
         super.setup();
-        environmentProvider = new KafkaEnvironmentProvider() {
-
-            private String zookeeperConnect;
-            private String logDir;
-            @Override
-            public void load() {
-                this.zookeeperConnect = sharedKafkaTestResource.getZookeeperConnectString();
-                try {
-                    this.logDir = getBrokerConfig(sharedKafkaTestResource, 1, "log.dir");
-                } catch (ExecutionException | InterruptedException e) {
-                    throw new RuntimeException(e);
-                }
-            }
-
-            @Override
-            public String clusterId() {
-                return TEST_CLUSTER;
-            }
-
-            @Override
-            public Integer brokerId() {
-                return 1;
-            }
-
-            @Override
-            public String zookeeperConnect() {
-                return zookeeperConnect;
-            }
-
-            @Override
-            public String logDir() {
-                return logDir;
-            }
-        };
+        environmentProvider = createTestEnvironmentProvider(sharedKafkaTestResource);
         createTopicAndVerify(sharedKafkaTestResource, TEST_TOPIC_A, 3);
         createTopicAndVerify(sharedKafkaTestResource, TEST_TOPIC_B, 6);
         startSegmentUploaderThread();
@@ -92,9 +56,9 @@ public class TestKafkaSegmentUploader extends TestBase {
 
     @Override
     @AfterEach
-    void tearDown() throws IOException, InterruptedException, ExecutionException {
+    public void tearDown() throws IOException, InterruptedException, ExecutionException {
         uploader.stop();
-        DirectoryTreeWatcher.unsetKafkaLeadershipWatcher();
+        DirectoryTreeWatcher.unsetLeadershipWatcher();
         deleteTopicAndVerify(sharedKafkaTestResource, TEST_TOPIC_A);
         sharedKafkaTestResource.getKafkaTestUtils().getAdminClient().close();
         super.tearDown();
@@ -110,10 +74,9 @@ public class TestKafkaSegmentUploader extends TestBase {
         adminClient.close();
     }
 
-    private void startSegmentUploaderThread() throws InterruptedException, IOException, KeeperException, ClassNotFoundException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
+    private void startSegmentUploaderThread() throws Exception {
         String configDirectory = "src/test/resources";
-        MultiThreadedS3FileUploader.overrideS3Client(s3Client);
-        S3FileDownloader.overrideS3Client(s3Client);
+        overrideS3ClientForFileUploaderAndDownloader(s3Client);
         uploader = new KafkaSegmentUploader(configDirectory, environmentProvider);
         uploader.start();
     }

@@ -27,7 +27,7 @@ public class TestMultiThreadedS3FileUploader extends TestBase {
     private SegmentUploaderConfiguration config;
 
     @BeforeEach
-    void setup() throws ConfigurationException, IOException, InterruptedException, KeeperException, ExecutionException, ClassNotFoundException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
+    public void setup() throws Exception {
         super.setup();
         // NO-OP
         KafkaEnvironmentProvider environmentProvider = new KafkaEnvironmentProvider() {

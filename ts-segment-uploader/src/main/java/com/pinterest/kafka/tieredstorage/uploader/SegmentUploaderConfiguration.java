@@ -22,22 +22,38 @@ public class SegmentUploaderConfiguration {
     private static final Logger LOG = LogManager.getLogger(SegmentUploaderConfiguration.class);
     private static final String TS_SEGMENT_UPLOADER_PREFIX = "ts.segment.uploader";
     private static final String KAFKA_PREFIX = TS_SEGMENT_UPLOADER_PREFIX + "." + "kafka";
+
+    // Topic inclusion / exclusion
     private static final String TOPICS_INCLUDE_PREFIX = KAFKA_PREFIX + "." + "topics.include";
     private static final String TOPICS_EXCLUDE_PREFIX = KAFKA_PREFIX + "." + "topics.exclude";
+
+    // Storage service endpoint provider
     private static final String STORAGE_SERVICE_ENDPOINT_PROVIDER_PREFIX = "storage.service.endpoint.provider";
     private static final String STORAGE_SERVICE_ENDPOINT_PROVIDER_CLASS_KEY = STORAGE_SERVICE_ENDPOINT_PROVIDER_PREFIX + "." + "class";
+
+    // Offset reset strategy
     private static final String OFFSET_RESET_STRATEGY_KEY = TS_SEGMENT_UPLOADER_PREFIX + "." + "offset.reset.strategy";
+
+    // Upload configurations
     private static final String UPLOADER_THREAD_COUNT_KEY = TS_SEGMENT_UPLOADER_PREFIX + "." + "upload.thread.count";
-    private static final String ZK_WATCHER_POLL_INTERVAL_SECONDS = TS_SEGMENT_UPLOADER_PREFIX + "." + "zk.watcher.poll.interval.seconds";
-    private static final String S3_PREFIX_ENTROPY_BITS = TS_SEGMENT_UPLOADER_PREFIX + "." + "s3.prefix.entropy.bits";
     private static final String UPLOAD_TIMEOUT_MS = TS_SEGMENT_UPLOADER_PREFIX + "." + "upload.timeout.ms";
     private static final String UPLOAD_MAX_RETRIES = TS_SEGMENT_UPLOADER_PREFIX + "." + "upload.max.retries";
+
+    // Leadership watcher
+    private static final String LEADERSHIP_WATCHER_CLASS_KEY = TS_SEGMENT_UPLOADER_PREFIX + "." + "leadership.watcher.class";
+    private static final String LEADERSHIP_WATCHER_POLL_INTERVAL_SECONDS = TS_SEGMENT_UPLOADER_PREFIX + "." + "leadership.watcher.poll.interval.seconds";
+
+    // Prefix entropy
+    private static final String S3_PREFIX_ENTROPY_BITS = TS_SEGMENT_UPLOADER_PREFIX + "." + "s3.prefix.entropy.bits";
+
+    // Internal structures
     private final Properties properties = new Properties();
     private final Set<Pattern> includeRegexes = ConcurrentHashMap.newKeySet();
     private final Set<Pattern> excludeRegexes = ConcurrentHashMap.newKeySet();
     private final Set<String> includeTopicsCache = ConcurrentHashMap.newKeySet();
     private final Set<String> excludeTopicsCache = ConcurrentHashMap.newKeySet();
     private final String storageServiceEndpointProviderClassName;
+    private final String leadershipWatcherClassName;
     private final MetricsConfiguration metricsConfiguration;
 
     public SegmentUploaderConfiguration(String configDirectory, String clusterId) throws IOException {
@@ -50,10 +66,11 @@ public class SegmentUploaderConfiguration {
             loadPatterns(includeRegexes, TOPICS_INCLUDE_PREFIX);
             loadPatterns(excludeRegexes, TOPICS_EXCLUDE_PREFIX);
 
-            if (!properties.containsKey(STORAGE_SERVICE_ENDPOINT_PROVIDER_CLASS_KEY)) {
-                throw new RuntimeException(String.format("Configuration %s must be provided", STORAGE_SERVICE_ENDPOINT_PROVIDER_CLASS_KEY));
-            }
+            checkConfigExists(properties, STORAGE_SERVICE_ENDPOINT_PROVIDER_CLASS_KEY);
             storageServiceEndpointProviderClassName = properties.getProperty(STORAGE_SERVICE_ENDPOINT_PROVIDER_CLASS_KEY);
+
+            checkConfigExists(properties, LEADERSHIP_WATCHER_CLASS_KEY);
+            leadershipWatcherClassName = properties.getProperty(LEADERSHIP_WATCHER_CLASS_KEY);
 
             metricsConfiguration = MetricsConfiguration.getMetricsConfiguration(properties);
 
@@ -63,6 +80,12 @@ public class SegmentUploaderConfiguration {
             LOG.info(String.format("Segment uploader properties: %s", properties));
         } catch (IOException e) {
             throw new IOException("Error in initializing SegmentUploaderConfiguration", e);
+        }
+    }
+
+    private static void checkConfigExists(Properties properties, String key) {
+        if (!properties.containsKey(key)) {
+            throw new RuntimeException(String.format("Configuration %s must be provided", key));
         }
     }
 
@@ -127,11 +150,15 @@ public class SegmentUploaderConfiguration {
         return Defaults.DEFAULT_UPLOADER_THREAD_POOL_SIZE;
     }
 
-    public int getZkWatcherPollIntervalSeconds() {
-        if (properties.containsKey(ZK_WATCHER_POLL_INTERVAL_SECONDS)) {
-            return Integer.parseInt(properties.getProperty(ZK_WATCHER_POLL_INTERVAL_SECONDS));
+    public String getLeadershipWatcherClassName() {
+        return this.leadershipWatcherClassName;
+    }
+
+    public int getLeadershipWatcherPollIntervalSeconds() {
+        if (properties.containsKey(LEADERSHIP_WATCHER_POLL_INTERVAL_SECONDS)) {
+            return Integer.parseInt(properties.getProperty(LEADERSHIP_WATCHER_POLL_INTERVAL_SECONDS));
         }
-        return Defaults.DEFAULT_ZK_WATCHER_POLL_INTERVAL_SECONDS;
+        return Defaults.DEFAULT_LEADERSHIP_WATCHER_POLL_INTERVAL_SECONDS;
     }
 
     public OffsetResetStrategy getOffsetResetStrategy() {
@@ -170,7 +197,7 @@ public class SegmentUploaderConfiguration {
     public static class Defaults {
         private static final String DEFAULT_OFFSET_RESET_STRATEGY = "EARLIEST";
         private static final int DEFAULT_UPLOADER_THREAD_POOL_SIZE = 3;
-        private static final int DEFAULT_ZK_WATCHER_POLL_INTERVAL_SECONDS = 60;
+        private static final int DEFAULT_LEADERSHIP_WATCHER_POLL_INTERVAL_SECONDS = 60;
         private static final int DEFAULT_S3_PREFIX_ENTROPY_BITS = -1;
         private static final int DEFAULT_UPLOAD_TIMEOUT_MS = 60000;
         private static final int DEFAULT_UPLOAD_MAX_RETRIES = 3;

@@ -29,10 +29,9 @@ public class UploaderMetrics {
     public static final String KAFKA_LEADER_UNSET_METRIC = UPLOADER_METRIC_PREFIX + "." + "kafka.leader.unset";
     public static final String KAFKA_LEADER_COUNT_METRIC = UPLOADER_METRIC_PREFIX + "." + "kafka.leader.count";
     public static final String WATCHER_ZK_RESET_METRIC = UPLOADER_METRIC_PREFIX + "." + "watcher.zk.reset";
-    public static final String WATCHER_NOT_ADDED_METRIC = UPLOADER_METRIC_PREFIX + "." + "watcher.not.added";
     public static final String SKIPPED_ENTRY_MODIFY_EVENT_METRIC = UPLOADER_METRIC_PREFIX + "." + "skipped.entry.modify";
     public static final String ADD_WATCHER_FAILED_METRIC = UPLOADER_METRIC_PREFIX + "." + "add.watcher.failed";
     public static final String ENQUEUE_TO_UPLOAD_LATENCY_MS_METRIC = UPLOADER_METRIC_PREFIX + "." + "enqueue.to.upload.latency.ms";
     public static final String RETRY_MARKED_FOR_DELETION_COUNT_METRIC = UPLOADER_METRIC_PREFIX + "." + "retry.marked.for.deletion.count";
-    public static final String WATCHER_ZK_EXCEPTION_METRIC = UPLOADER_METRIC_PREFIX + "." + "watcher.zk.exception";
+    public static final String WATCHER_LEADERSHIP_EXCEPTION_METRIC = UPLOADER_METRIC_PREFIX + "." + "watcher.leadership.exception";
 }

@@ -1,10 +1,9 @@
 package com.pinterest.kafka.tieredstorage.uploader;
 
 import com.pinterest.kafka.tieredstorage.common.discovery.s3.MockS3StorageServiceEndpointProvider;
+import com.pinterest.kafka.tieredstorage.uploader.leadership.ZookeeperLeadershipWatcher;
 import com.salesforce.kafka.test.junit5.SharedKafkaTestResource;
-import org.apache.commons.configuration2.ex.ConfigurationException;
 import org.apache.kafka.clients.admin.AdminClient;
-import org.apache.zookeeper.KeeperException;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -13,7 +12,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
 import java.io.IOException;
-import java.lang.reflect.InvocationTargetException;
 import java.nio.file.Path;
 import java.nio.file.WatchKey;
 import java.util.HashMap;
@@ -36,62 +34,39 @@ public class TestDirectoryTreeWatcherMultiBroker extends TestBase {
 
     @BeforeEach
     @Override
-    void setup() throws ConfigurationException, IOException, InterruptedException, KeeperException, ExecutionException, ClassNotFoundException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
+    public void setup() throws Exception {
         super.setup();
-        KafkaEnvironmentProvider environmentProvider = new KafkaEnvironmentProvider() {
 
-            private String zookeeperConnect;
-            private String logDir;
-
-            @Override
-            public void load() {
-                this.zookeeperConnect = sharedKafkaTestResource.getZookeeperConnectString();
-                try {
-                    this.logDir = getBrokerConfig(sharedKafkaTestResource, 1, "log.dir");
-                } catch (ExecutionException | InterruptedException e) {
-                    throw new RuntimeException(e);
-                }
-            }
-
-            @Override
-            public String clusterId() {
-                return TEST_CLUSTER;
-            }
-
-            @Override
-            public Integer brokerId() {
-                return 1;
-            }
-
-            @Override
-            public String zookeeperConnect() {
-                return zookeeperConnect;
-            }
-
-            @Override
-            public String logDir() {
-                return logDir;
-            }
-        };
+        // environment provider setup
+        KafkaEnvironmentProvider environmentProvider = createTestEnvironmentProvider(sharedKafkaTestResource);
         environmentProvider.load();
 
-        MultiThreadedS3FileUploader.overrideS3Client(s3Client);
-        S3FileDownloader.overrideS3Client(s3Client);
-        createTopicAndVerify(sharedKafkaTestResource, TEST_TOPIC_A,  6, (short) 2);
+        // override s3 client
+        overrideS3ClientForFileUploaderAndDownloader(s3Client);
+
+        // endpoint provider setup
         MockS3StorageServiceEndpointProvider endpointProvider = new MockS3StorageServiceEndpointProvider();
         endpointProvider.initialize(TEST_CLUSTER);
-        MultiThreadedS3FileUploader.overrideS3Client(s3Client);
+
+        // s3 uploader setup
         SegmentUploaderConfiguration config = new SegmentUploaderConfiguration("src/test/resources", TEST_CLUSTER);
         S3FileUploader s3FileUploader = new MultiThreadedS3FileUploader(endpointProvider, config, environmentProvider);
+
+        // create topic with replicationFactor = 2
+        createTopicAndVerify(sharedKafkaTestResource, TEST_TOPIC_A,  6, (short) 2);
+
+        // start directory tree watcher
         directoryTreeWatcher = new DirectoryTreeWatcher(s3FileUploader, config, environmentProvider);
+        DirectoryTreeWatcher.setLeadershipWatcher(new ZookeeperLeadershipWatcher(directoryTreeWatcher, config, environmentProvider));
+        directoryTreeWatcher.initialize();
         directoryTreeWatcher.start();
     }
 
     @AfterEach
     @Override
-    void tearDown() throws IOException, ExecutionException, InterruptedException {
+    public void tearDown() throws IOException, ExecutionException, InterruptedException {
         directoryTreeWatcher.stop();
-        DirectoryTreeWatcher.unsetKafkaLeadershipWatcher();
+        DirectoryTreeWatcher.unsetLeadershipWatcher();
         super.tearDown();
     }
 

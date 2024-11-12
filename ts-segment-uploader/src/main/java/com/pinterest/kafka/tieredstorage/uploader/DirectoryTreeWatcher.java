@@ -2,7 +2,7 @@ package com.pinterest.kafka.tieredstorage.uploader;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.pinterest.kafka.tieredstorage.common.metrics.MetricRegistryManager;
-import com.pinterest.kafka.tieredstorage.uploader.leadership.KafkaLeadershipWatcher;
+import com.pinterest.kafka.tieredstorage.uploader.leadership.LeadershipWatcher;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
@@ -11,17 +11,14 @@ import org.apache.zookeeper.KeeperException;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.FileSystems;
-import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardWatchEventKinds;
 import java.nio.file.WatchEvent;
 import java.nio.file.WatchKey;
 import java.nio.file.WatchService;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -56,18 +53,16 @@ public class DirectoryTreeWatcher implements Runnable {
     private static final Logger LOG = LogManager.getLogger(DirectoryTreeWatcher.class);
     private static final String[] MONITORED_EXTENSIONS = {".timeindex", ".index", ".log"};
     private static final Pattern MONITORED_FILE_PATTERN = Pattern.compile("^\\d+(" + String.join("|", MONITORED_EXTENSIONS) + ")$");
-    private final Path topLevelPath;
-    private final WatchService watchService;
-    private Thread thread;
-    private boolean cancelled = false;
     private static Map<TopicPartition, String> activeSegment;
     private static Map<TopicPartition, Set<String>> segmentsQueue;
+    private static LeadershipWatcher leadershipWatcher;
+    private final Path topLevelPath;
+    private final WatchService watchService;
     private final ConcurrentLinkedQueue<UploadTask> uploadTasks = new ConcurrentLinkedQueue<>();
     private final S3FileUploader s3FileUploader;
     private final ThreadLocal<WatermarkFileHandler> tempFileGenerator = ThreadLocal.withInitial(WatermarkFileHandler::new);
     private final ConcurrentHashMap<TopicPartition, String> latestUploadedOffset = new ConcurrentHashMap<>();
     private final S3FileDownloader s3FileDownloader;
-    private static KafkaLeadershipWatcher kafkaLeadershipWatcher;
     private final Pattern SKIP_TOPICS_PATTERN = Pattern.compile(
             "^__consumer_offsets$|^__transaction_state$|.+\\.changlog$|.+\\.repartition$"
     );
@@ -78,28 +73,23 @@ public class DirectoryTreeWatcher implements Runnable {
     private final SegmentUploaderConfiguration config;
     private final KafkaEnvironmentProvider environmentProvider;
     private final Object watchKeyMapLock = new Object();
+    private Thread thread;
+    private boolean cancelled = false;
 
-    public static void setKafkaLeadershipWatcher(DirectoryTreeWatcher directoryTreeWatcher, SegmentUploaderConfiguration config, KafkaEnvironmentProvider environmentProvider) {
-        if (kafkaLeadershipWatcher == null) {
-            try {
-                kafkaLeadershipWatcher = new KafkaLeadershipWatcher(directoryTreeWatcher, config, environmentProvider);
-            } catch (IOException | InterruptedException e) {
-                LOG.error("Could not launch Kafka Leadership Watcher; quitting ...");
-                throw new RuntimeException(e);
-            }
-        }
+    public static void setLeadershipWatcher(LeadershipWatcher suppliedLeadershipWatcher) {
+        if (leadershipWatcher == null)
+            leadershipWatcher = suppliedLeadershipWatcher;
     }
 
     @VisibleForTesting
-    protected static void unsetKafkaLeadershipWatcher() {
-        kafkaLeadershipWatcher = null;
+    protected static void unsetLeadershipWatcher() {
+        leadershipWatcher = null;
     }
 
-    public DirectoryTreeWatcher(S3FileUploader s3FileUploader, SegmentUploaderConfiguration config, KafkaEnvironmentProvider environmentProvider) throws IOException, InterruptedException, KeeperException {
+    public DirectoryTreeWatcher(S3FileUploader s3FileUploader, SegmentUploaderConfiguration config, KafkaEnvironmentProvider environmentProvider) throws Exception {
         this.environmentProvider = environmentProvider;
         this.topLevelPath = Paths.get(environmentProvider.logDir());
         this.watchService = FileSystems.getDefault().newWatchService();
-        setKafkaLeadershipWatcher(this, config, environmentProvider);
         activeSegment = new HashMap<>();
         segmentsQueue = new HashMap<>();
         this.s3FileUploader = s3FileUploader;
@@ -107,7 +97,6 @@ public class DirectoryTreeWatcher implements Runnable {
         this.s3FileDownloader = new S3FileDownloader(s3FileUploader.getStorageServiceEndpointProvider(), config);
         heartbeat = new Heartbeat("watcher.logs", config, environmentProvider);
         this.config = config;
-        initialize();
     }
 
     /**
@@ -116,7 +105,10 @@ public class DirectoryTreeWatcher implements Runnable {
      * @throws InterruptedException
      * @throws KeeperException
      */
-    private void initialize() throws IOException, InterruptedException, KeeperException {
+    public void initialize() throws Exception {
+        if (leadershipWatcher == null) {
+            throw new IllegalStateException("LeadershipWatcher must be set before initializing DirectoryTreeWatcher");
+        }
         s3UploadHandler.submit(() -> {
             while (!cancelled) {
                 if (uploadTasks.isEmpty()) {
@@ -145,8 +137,8 @@ public class DirectoryTreeWatcher implements Runnable {
                 s3FileUploader.uploadFile(task, this::handleUploadCallback);
             }
         });
-        LOG.info("Initializing KafkaLeadershipWatcher");
-        kafkaLeadershipWatcher.start();
+        LOG.info("Initializing LeadershipWatcher");
+        leadershipWatcher.start();
         LOG.info("Submitting s3UploadHandler loop");
     }
 
@@ -702,7 +694,7 @@ public class DirectoryTreeWatcher implements Runnable {
         if (thread != null && thread.isAlive()) {
             thread.interrupt();
         }
-        kafkaLeadershipWatcher.stop();
+        leadershipWatcher.stop();
         heartbeat.stop();
     }
 
