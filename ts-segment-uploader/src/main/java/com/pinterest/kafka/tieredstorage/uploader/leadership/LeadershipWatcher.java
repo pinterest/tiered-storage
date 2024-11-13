@@ -66,6 +66,14 @@ public abstract class LeadershipWatcher {
                 "cluster=" + environmentProvider.clusterId(),
                 "broker=" + environmentProvider.brokerId()
         );
+        MetricRegistryManager.getInstance(config.getMetricsConfiguration()).updateCounter(
+                topicPartition.topic(),
+                topicPartition.partition(),
+                UploaderMetrics.KAFKA_LEADER_COUNT_METRIC,
+                1,
+                "cluster=" + environmentProvider.clusterId(),
+                "broker=" + environmentProvider.brokerId()
+        );
     }
 
     private void unwatchPartition(TopicPartition topicPartition) {
