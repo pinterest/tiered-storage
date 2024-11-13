@@ -17,6 +17,9 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+/**
+ * Test for {@link LeadershipWatcher}
+ */
 public class TestLeadershipWatcher extends TestBase {
     private static final Set<TopicPartition> watchedTopicPartitions = new HashSet<>();
     private static final Set<TopicPartition> currentLeadingPartitions = new HashSet<>();
@@ -47,6 +50,9 @@ public class TestLeadershipWatcher extends TestBase {
         mockLeadershipWatcher = new MockLeadershipWatcher(directoryTreeWatcher, config, environmentProvider);
     }
 
+    /**
+     * Test {@link LeadershipWatcher#applyCurrentState()} method
+     */
     @Test
     void testApplyCurrentState() throws Exception {
         // test initial state
@@ -83,6 +89,9 @@ public class TestLeadershipWatcher extends TestBase {
         assertEquals(currentLeadingPartitions, watchedTopicPartitions);
     }
 
+    /**
+     * Mock {@link LeadershipWatcher} for testing
+     */
     private static class MockLeadershipWatcher extends LeadershipWatcher {
 
         public MockLeadershipWatcher(DirectoryTreeWatcher directoryTreeWatcher, SegmentUploaderConfiguration config, KafkaEnvironmentProvider environmentProvider) throws IOException, InterruptedException {
@@ -100,6 +109,9 @@ public class TestLeadershipWatcher extends TestBase {
         }
     }
 
+    /**
+     * Mock {@link DirectoryTreeWatcher} for testing
+     */
     protected static class MockDirectoryTreeWatcher extends DirectoryTreeWatcher {
 
         private final Set<TopicPartition> watchedTopicPartitions;

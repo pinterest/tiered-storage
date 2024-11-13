@@ -16,6 +16,14 @@ import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 
+/**
+ * Abstract class to watch leadership of Kafka partitions and apply the current state to the {@link DirectoryTreeWatcher}.
+ * The current state is queried from the implementation of {@link #queryCurrentLeadingPartitions()} and the difference
+ * between the current state and the last known state is applied to the {@link DirectoryTreeWatcher}.
+ *
+ * The interval at which the current state is queried is configurable via the ts.uploader.leadership.watcher.poll.interval.seconds
+ * configuration.
+ */
 public abstract class LeadershipWatcher {
     private final static Logger LOG = LogManager.getLogger(LeadershipWatcher.class);
     protected final ScheduledExecutorService executorService;
@@ -33,10 +41,36 @@ public abstract class LeadershipWatcher {
         initialize();
     }
 
+    /**
+     * Initialize the leadership watcher. This method is called once during construction.
+     *
+     * @throws IOException if there is an error initializing the watcher
+     * @throws InterruptedException if the thread is interrupted while initializing
+     */
     protected abstract void initialize() throws IOException, InterruptedException;
 
+    /**
+     * Query the current leading partitions from the underlying system (e.g. ZooKeeper or KRaft). This method
+     * should return the current set of partitions that are being led by this broker. This method is called
+     * periodically by the {@link #executorService} to update the current state of leadership.
+     *
+     * The expected behavior is that if the method cannot determine the current state of leadership (i.e. the query
+     * fails exceptionally), it should throw the exception instead of returning an empty or incomplete set of partitions.
+     *
+     * Any exception thrown by the underlying method implementation will be caught in the {@link #executorService}
+     * and the {@link #applyCurrentState()} method will be called again in the next run. Any other error handling
+     * logic should be implemented in the underlying method implementation without breaking the contract that
+     * the method should never return an incomplete set of partitions.
+     *
+     * @return the current set of leading partitions
+     * @throws Exception if there is an error querying the current state
+     */
     protected abstract Set<TopicPartition> queryCurrentLeadingPartitions() throws Exception;
 
+    /**
+     * Internal method to apply the current state of leadership to the {@link DirectoryTreeWatcher}.
+     * @throws Exception if there is an error applying the current state
+     */
     protected void applyCurrentState() throws Exception {
         long start = System.currentTimeMillis();
         LOG.info("Applying current leadership state. Last successful run was " + (System.currentTimeMillis() - lastPollTime) + "ms ago");

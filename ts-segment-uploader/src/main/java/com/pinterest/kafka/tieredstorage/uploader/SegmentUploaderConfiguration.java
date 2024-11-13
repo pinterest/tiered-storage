@@ -23,27 +23,57 @@ public class SegmentUploaderConfiguration {
     private static final String TS_SEGMENT_UPLOADER_PREFIX = "ts.segment.uploader";
     private static final String KAFKA_PREFIX = TS_SEGMENT_UPLOADER_PREFIX + "." + "kafka";
 
-    // Topic inclusion / exclusion
+    /**
+     * Include and exclude regexes for topics to upload.
+     * If a topic matches an exclude regex, it will not be uploaded.
+     * If a topic matches an include regex, it will be uploaded unless it also matches an exclude regex.
+     * In other words, the exclude regexes take precedence over the include regexes.
+     */
     private static final String TOPICS_INCLUDE_PREFIX = KAFKA_PREFIX + "." + "topics.include";
     private static final String TOPICS_EXCLUDE_PREFIX = KAFKA_PREFIX + "." + "topics.exclude";
 
-    // Storage service endpoint provider
+    /**
+     * Class name for {@link com.pinterest.kafka.tieredstorage.common.discovery.StorageServiceEndpointProvider}
+     * implementation to use. This class is used to discover the storage service endpoints for the uploader.
+     */
     private static final String STORAGE_SERVICE_ENDPOINT_PROVIDER_PREFIX = "storage.service.endpoint.provider";
     private static final String STORAGE_SERVICE_ENDPOINT_PROVIDER_CLASS_KEY = STORAGE_SERVICE_ENDPOINT_PROVIDER_PREFIX + "." + "class";
 
-    // Offset reset strategy
+    /**
+     * Offset reset strategy for the consumer. This can be either "earliest" or "latest".
+     * If set to earliest, the uploader will start uploading from earliest available log segments if no committed offsets are found.
+     * If set to latest, the uploader will start uploading from the latest available log segments if no committed offsets are found.
+     */
     private static final String OFFSET_RESET_STRATEGY_KEY = TS_SEGMENT_UPLOADER_PREFIX + "." + "offset.reset.strategy";
 
-    // Upload configurations
+    /**
+     * Number of threads to use for uploading segments to remote storage.
+     */
     private static final String UPLOADER_THREAD_COUNT_KEY = TS_SEGMENT_UPLOADER_PREFIX + "." + "upload.thread.count";
+
+    /**
+     * Timeout in milliseconds for uploading a segment to remote storage.
+     */
     private static final String UPLOAD_TIMEOUT_MS = TS_SEGMENT_UPLOADER_PREFIX + "." + "upload.timeout.ms";
+
+    /**
+     * Maximum number of retries for uploading a segment to remote storage.
+     */
     private static final String UPLOAD_MAX_RETRIES = TS_SEGMENT_UPLOADER_PREFIX + "." + "upload.max.retries";
 
-    // Leadership watcher
+    /**
+     * Class name for {@link com.pinterest.kafka.tieredstorage.uploader.leadership.LeadershipWatcher} implementation to use.
+     */
     private static final String LEADERSHIP_WATCHER_CLASS_KEY = TS_SEGMENT_UPLOADER_PREFIX + "." + "leadership.watcher.class";
+
+    /**
+     * Poll interval in seconds for the leadership watcher to query the leadership state of Kafka partitions.
+     */
     private static final String LEADERSHIP_WATCHER_POLL_INTERVAL_SECONDS = TS_SEGMENT_UPLOADER_PREFIX + "." + "leadership.watcher.poll.interval.seconds";
 
-    // Prefix entropy
+    /**
+     * Number of bits of entropy to use for generating S3 prefixes for uploaded segments.
+     */
     private static final String S3_PREFIX_ENTROPY_BITS = TS_SEGMENT_UPLOADER_PREFIX + "." + "s3.prefix.entropy.bits";
 
     // Internal structures

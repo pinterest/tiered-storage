@@ -24,6 +24,9 @@ import java.util.concurrent.ExecutionException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+/**
+ * Test for {@link ZookeeperLeadershipWatcher}
+ */
 public class TestZookeeperLeadershipWatcher extends TestBase {
 
     @RegisterExtension
@@ -70,6 +73,9 @@ public class TestZookeeperLeadershipWatcher extends TestBase {
         super.tearDown();
     }
 
+    /**
+     * Test {@link ZookeeperLeadershipWatcher#queryCurrentLeadingPartitions()} method
+     */
     @Test
     void testQueryCurrentLeadingPartitions() throws Exception {
         Set<TopicPartition> currentLeadingPartitions = zkLeadershipWatcher.queryCurrentLeadingPartitions();
