@@ -137,7 +137,7 @@ public class DirectoryTreeWatcher implements Runnable {
                 s3FileUploader.uploadFile(task, this::handleUploadCallback);
             }
         });
-        LOG.info("Initializing LeadershipWatcher");
+        LOG.info("Starting LeadershipWatcher: " + leadershipWatcher.getClass().getName());
         leadershipWatcher.start();
         LOG.info("Submitting s3UploadHandler loop");
     }
