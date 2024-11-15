@@ -2,6 +2,7 @@ package com.pinterest.kafka.tieredstorage.uploader;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.pinterest.kafka.tieredstorage.common.discovery.StorageServiceEndpointProvider;
+import com.pinterest.kafka.tieredstorage.uploader.leadership.LeadershipWatcher;
 import org.apache.commons.configuration2.ex.ConfigurationException;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
@@ -21,22 +22,12 @@ public class KafkaSegmentUploader {
     private final StorageServiceEndpointProvider endpointProvider;
     private final SegmentUploaderConfiguration config;
 
-    public KafkaSegmentUploader(String configDirectory) throws IOException, InterruptedException, KeeperException, ClassNotFoundException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
-        Utils.acquireLock();
-        KafkaEnvironmentProvider environmentProvider = getEnvironmentProvider();
-        environmentProvider.load();
-
-        config = new SegmentUploaderConfiguration(configDirectory, environmentProvider.clusterId());
-
-        endpointProvider = getEndpointProviderFromConfigs(config);
-        endpointProvider.initialize(environmentProvider.clusterId());
-
-        multiThreadedS3FileUploader = new MultiThreadedS3FileUploader(endpointProvider, config, environmentProvider);
-        directoryTreeWatcher = new DirectoryTreeWatcher(multiThreadedS3FileUploader, config, environmentProvider);
+    public KafkaSegmentUploader(String configDirectory) throws Exception {
+        this(configDirectory, getEnvironmentProvider());
     }
 
     @VisibleForTesting
-    protected KafkaSegmentUploader(String configDirectory, KafkaEnvironmentProvider environmentProvider) throws IOException, ClassNotFoundException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException, InterruptedException, KeeperException {
+    protected KafkaSegmentUploader(String configDirectory, KafkaEnvironmentProvider environmentProvider) throws Exception {
         Utils.acquireLock();
         environmentProvider.load();
         config = new SegmentUploaderConfiguration(configDirectory, environmentProvider.clusterId());
@@ -46,6 +37,11 @@ public class KafkaSegmentUploader {
 
         multiThreadedS3FileUploader = new MultiThreadedS3FileUploader(endpointProvider, config, environmentProvider);
         directoryTreeWatcher = new DirectoryTreeWatcher(multiThreadedS3FileUploader, config, environmentProvider);
+
+        LeadershipWatcher leadershipWatcher = getLeadershipWatcherFromConfigs(directoryTreeWatcher, config, environmentProvider);
+        DirectoryTreeWatcher.setLeadershipWatcher(leadershipWatcher);
+
+        directoryTreeWatcher.initialize();
     }
 
     public void start() {
@@ -58,7 +54,7 @@ public class KafkaSegmentUploader {
         Utils.releaseLock();
     }
 
-    private KafkaEnvironmentProvider getEnvironmentProvider() throws ClassNotFoundException, NoSuchMethodException, InvocationTargetException, InstantiationException, IllegalAccessException {
+    private static KafkaEnvironmentProvider getEnvironmentProvider() throws ClassNotFoundException, NoSuchMethodException, InvocationTargetException, InstantiationException, IllegalAccessException {
         String kafkaEnvironmentProviderClass = System.getProperty("kafkaEnvironmentProviderClass");
         if (kafkaEnvironmentProviderClass == null) {
             throw new RuntimeException("kafkaEnvironmentProviderClass must be set as a JVM argument");
@@ -67,6 +63,14 @@ public class KafkaSegmentUploader {
         Constructor<? extends KafkaEnvironmentProvider> environmentProviderConstructor = Class.forName(kafkaEnvironmentProviderClass)
                 .asSubclass(KafkaEnvironmentProvider.class).getConstructor();
         return environmentProviderConstructor.newInstance();
+    }
+
+    private static LeadershipWatcher getLeadershipWatcherFromConfigs(DirectoryTreeWatcher directoryTreeWatcher, SegmentUploaderConfiguration config, KafkaEnvironmentProvider kafkaEnvironmentProvider) throws InvocationTargetException, InstantiationException, IllegalAccessException, ClassNotFoundException, NoSuchMethodException {
+        String leadershipWatcherClassName = config.getLeadershipWatcherClassName();
+        LOG.info(String.format("LeadershipWatcher: %s", leadershipWatcherClassName));
+        Constructor<? extends LeadershipWatcher> leadershipWatcherConstructor = Class.forName(leadershipWatcherClassName)
+                .asSubclass(LeadershipWatcher.class).getConstructor(DirectoryTreeWatcher.class, SegmentUploaderConfiguration.class, KafkaEnvironmentProvider.class);
+        return leadershipWatcherConstructor.newInstance(directoryTreeWatcher, config, kafkaEnvironmentProvider);
     }
 
     @VisibleForTesting
@@ -79,13 +83,15 @@ public class KafkaSegmentUploader {
         return config;
     }
 
-    private StorageServiceEndpointProvider getEndpointProviderFromConfigs(SegmentUploaderConfiguration config) throws ClassNotFoundException, NoSuchMethodException, InvocationTargetException, InstantiationException, IllegalAccessException {
-        Constructor<? extends StorageServiceEndpointProvider> endpointProviderConstructor = Class.forName(config.getStorageServiceEndpointProviderClassName())
+    private static StorageServiceEndpointProvider getEndpointProviderFromConfigs(SegmentUploaderConfiguration config) throws ClassNotFoundException, NoSuchMethodException, InvocationTargetException, InstantiationException, IllegalAccessException {
+        String endpointProviderClassName = config.getStorageServiceEndpointProviderClassName();
+        LOG.info(String.format("StorageServiceEndpointProvider: %s", endpointProviderClassName));
+        Constructor<? extends StorageServiceEndpointProvider> endpointProviderConstructor = Class.forName(endpointProviderClassName)
                 .asSubclass(StorageServiceEndpointProvider.class).getConstructor();
         return endpointProviderConstructor.newInstance();
     }
 
-    public static void main(String[] args) throws IOException, InterruptedException, KeeperException, ConfigurationException, ClassNotFoundException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
+    public static void main(String[] args) throws Exception {
         if (args.length != 1) {
             LOG.error("configDirectory is required as an argument");
             System.exit(1);

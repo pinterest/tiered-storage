@@ -5,7 +5,6 @@ import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.salesforce.kafka.test.junit5.SharedKafkaTestResource;
-import org.apache.commons.configuration2.ex.ConfigurationException;
 import org.apache.kafka.clients.admin.DescribeConfigsResult;
 import org.apache.kafka.common.config.ConfigResource;
 import org.apache.zookeeper.CreateMode;
@@ -26,7 +25,6 @@ import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Response;
 
 import java.io.IOException;
-import java.lang.reflect.InvocationTargetException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -48,7 +46,7 @@ public class TestBase {
     protected S3Client s3Client;
 
     @BeforeEach
-    void setup() throws InterruptedException, IOException, KeeperException, ConfigurationException, ExecutionException, ClassNotFoundException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
+    public void setup() throws Exception {
         s3Client = S3Client.builder()
                 .endpointOverride(URI.create(S3_MOCK.getServiceEndpoint()))
                 .region(Region.US_EAST_1)
@@ -58,9 +56,86 @@ public class TestBase {
     }
 
     @AfterEach
-    void tearDown() throws IOException, InterruptedException, ExecutionException {
+    public void tearDown() throws IOException, InterruptedException, ExecutionException {
         Thread.sleep(5000);
         s3Client.close();
+    }
+
+    public static void overrideS3ClientForFileUploaderAndDownloader(S3Client s3Client) {
+        MultiThreadedS3FileUploader.overrideS3Client(s3Client);
+        S3FileDownloader.overrideS3Client(s3Client);
+    }
+
+    public static KafkaEnvironmentProvider createTestEnvironmentProvider(String suppliedZkConnect, String suppliedLogDir) {
+        KafkaEnvironmentProvider environmentProvider = new KafkaEnvironmentProvider() {
+
+            private String zookeeperConnect;
+            private String logDir;
+            @Override
+            public void load() {
+                this.zookeeperConnect = suppliedZkConnect;
+                this.logDir = suppliedLogDir;
+            }
+
+            @Override
+            public String clusterId() {
+                return TEST_CLUSTER;
+            }
+
+            @Override
+            public Integer brokerId() {
+                return 1;
+            }
+
+            @Override
+            public String zookeeperConnect() {
+                return zookeeperConnect;
+            }
+
+            @Override
+            public String logDir() {
+                return logDir;
+            }
+        };
+        return environmentProvider;
+    }
+
+    public static KafkaEnvironmentProvider createTestEnvironmentProvider(SharedKafkaTestResource sharedKafkaTestResource) {
+        KafkaEnvironmentProvider environmentProvider = new KafkaEnvironmentProvider() {
+
+            private String zookeeperConnect;
+            private String logDir;
+            @Override
+            public void load() {
+                this.zookeeperConnect = sharedKafkaTestResource.getZookeeperConnectString();
+                try {
+                    this.logDir = getBrokerConfig(sharedKafkaTestResource, 1, "log.dir");
+                } catch (ExecutionException | InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+
+            @Override
+            public String clusterId() {
+                return TEST_CLUSTER;
+            }
+
+            @Override
+            public Integer brokerId() {
+                return 1;
+            }
+
+            @Override
+            public String zookeeperConnect() {
+                return zookeeperConnect;
+            }
+
+            @Override
+            public String logDir() {
+                return logDir;
+            }
+        };
+        return environmentProvider;
     }
 
     protected static void sendTestData(SharedKafkaTestResource sharedKafkaTestResource, String topic, int partition, int numRecords) {
@@ -129,9 +204,17 @@ public class TestBase {
     }
 
     protected static void reassignPartitions(SharedKafkaTestResource sharedKafkaTestResource, Map<String, Map<Integer, List<Integer>>> assignmentMap) throws IOException, InterruptedException, KeeperException {
+        String path = "/admin/reassign_partitions";
         ZooKeeper zk = new ZooKeeper(sharedKafkaTestResource.getZookeeperConnectString(), 10000, null);
         String assignmentJson = assignmentMapToJson(assignmentMap);
-        zk.create("/admin/reassign_partitions", assignmentJson.getBytes(), ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
+        if (zk.exists(path, false) == null) {
+            zk.create(path, assignmentJson.getBytes(), ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
+        }
+        while (zk.exists(path, false) == null) {
+            // wait until znode exists
+            Thread.sleep(200);
+        }
+        zk.setData(path, assignmentJson.getBytes(), -1);
         zk.close();
 
         // wait for reassignment to complete
