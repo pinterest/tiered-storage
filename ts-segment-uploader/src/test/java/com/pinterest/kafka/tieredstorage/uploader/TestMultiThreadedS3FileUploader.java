@@ -3,17 +3,21 @@ package com.pinterest.kafka.tieredstorage.uploader;
 import com.pinterest.kafka.tieredstorage.common.discovery.s3.MockS3StorageServiceEndpointProvider;
 import com.pinterest.kafka.tieredstorage.common.discovery.s3.S3StorageServiceEndpoint;
 import com.pinterest.kafka.tieredstorage.common.discovery.s3.S3StorageServiceEndpointProvider;
-import org.apache.commons.configuration2.ex.ConfigurationException;
 import org.apache.kafka.common.TopicPartition;
-import org.apache.zookeeper.KeeperException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import software.amazon.awssdk.auth.credentials.AnonymousCredentialsProvider;
+import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration;
+import software.amazon.awssdk.core.exception.ApiCallTimeoutException;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.s3.S3AsyncClient;
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Response;
 
 import java.io.IOException;
-import java.lang.reflect.InvocationTargetException;
+import java.net.URI;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Paths;
+import java.time.Duration;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -24,13 +28,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class TestMultiThreadedS3FileUploader extends TestBase {
     protected MultiThreadedS3FileUploader s3FileUploader;
     private S3StorageServiceEndpointProvider endpointProvider;
+    private KafkaEnvironmentProvider environmentProvider;
     private SegmentUploaderConfiguration config;
 
     @BeforeEach
     public void setup() throws Exception {
         super.setup();
         // NO-OP
-        KafkaEnvironmentProvider environmentProvider = new KafkaEnvironmentProvider() {
+        environmentProvider = new KafkaEnvironmentProvider() {
             @Override
             public void load() {
             }
@@ -59,7 +64,7 @@ public class TestMultiThreadedS3FileUploader extends TestBase {
         };
         endpointProvider = new MockS3StorageServiceEndpointProvider();
         endpointProvider.initialize(TEST_CLUSTER);
-        MultiThreadedS3FileUploader.overrideS3Client(s3Client);
+        MultiThreadedS3FileUploader.overrideS3Client(s3AsyncClient);
         config = new SegmentUploaderConfiguration("src/test/resources", TEST_CLUSTER);
         s3FileUploader = new MultiThreadedS3FileUploader(endpointProvider, config, environmentProvider);
     }
@@ -69,7 +74,7 @@ public class TestMultiThreadedS3FileUploader extends TestBase {
      * @throws InterruptedException
      */
     @Test
-    void testSimpleUpload() throws InterruptedException {
+    void testSimpleUpload() throws InterruptedException, ExecutionException {
         TopicPartition tp = new TopicPartition(TEST_TOPIC_A, 0);
         String offset = "00000000000000000000";
         DirectoryTreeWatcher.UploadTask uploadTask = new DirectoryTreeWatcher.UploadTask(
@@ -89,7 +94,7 @@ public class TestMultiThreadedS3FileUploader extends TestBase {
         ListObjectsV2Response response = getListObjectsV2Response(
                 S3_BUCKET,
                 endpoint.getFullPrefix(),
-                s3Client
+                s3AsyncClient
         );
 
         assertEquals(1, response.contents().size());
@@ -107,7 +112,7 @@ public class TestMultiThreadedS3FileUploader extends TestBase {
         response = getListObjectsV2Response(
                 S3_BUCKET,
                 endpoint.getFullPrefix(),
-                s3Client
+                s3AsyncClient
         );
 
         assertEquals(2, response.contents().size());
@@ -141,6 +146,33 @@ public class TestMultiThreadedS3FileUploader extends TestBase {
                 assertTrue(Utils.isAssignableFromRecursive(throwable, NoSuchFileException.class));
             }
         });
+    }
 
+    @Test
+    void testTimeoutUpload() throws IOException {
+        // override s3AsyncClient to have a very short timeout
+        MultiThreadedS3FileUploader.overrideS3Client(getS3AsyncClientWithCustomApiCallTimeout(1L));
+
+        // upload a log file
+        TopicPartition tp = new TopicPartition(TEST_TOPIC_B, 0);
+        String offset = "00000000000000000000";
+
+        DirectoryTreeWatcher.UploadTask uploadTask = new DirectoryTreeWatcher.UploadTask(
+                tp,
+                offset,
+                String.format("%s.log", offset),
+                TEST_DATA_LOG_DIRECTORY_PATH.resolve(Paths.get(String.format("%s.log", offset)))
+        );
+
+        s3FileUploader.uploadFile(uploadTask, new S3UploadCallback() {
+            @Override
+            public void onCompletion(DirectoryTreeWatcher.UploadTask uploadTask, long totalTimeMs, Throwable throwable, int statusCode) {
+                assertTrue(Utils.isAssignableFromRecursive(throwable, ApiCallTimeoutException.class));
+                assertEquals(statusCode, MultiThreadedS3FileUploader.UPLOAD_TIMEOUT_ERROR_CODE);
+            }
+        });
+
+        // override s3AsyncClient back to original
+        MultiThreadedS3FileUploader.overrideS3Client(s3AsyncClient);
     }
 }

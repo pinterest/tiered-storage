@@ -1,5 +1,6 @@
 package com.pinterest.kafka.tieredstorage.uploader;
 
+import com.pinterest.kafka.tieredstorage.common.discovery.StorageServiceEndpointProvider;
 import com.pinterest.kafka.tieredstorage.common.discovery.s3.MockS3StorageServiceEndpointProvider;
 import com.pinterest.kafka.tieredstorage.uploader.leadership.ZookeeperLeadershipWatcher;
 import com.salesforce.kafka.test.junit5.SharedKafkaTestResource;
@@ -15,6 +16,7 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.WatchKey;
@@ -22,10 +24,12 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class TestDirectoryTreeWatcher extends TestBase {
@@ -33,10 +37,10 @@ public class TestDirectoryTreeWatcher extends TestBase {
     private static final SharedKafkaTestResource sharedKafkaTestResource = new SharedKafkaTestResource()
             .withBrokerProperty("log.segment.bytes", "30000")
             .withBrokerProperty("log.segment.delete.delay.ms", "5000");
-    private static final String TEST_TOPIC_B = "test_topic_b";
     private DirectoryTreeWatcher directoryTreeWatcher;
     private KafkaEnvironmentProvider environmentProvider;
     private static AdminClient adminClient;
+    private SegmentUploaderConfiguration config;
 
     @BeforeEach
     @Override
@@ -48,14 +52,15 @@ public class TestDirectoryTreeWatcher extends TestBase {
         environmentProvider.load();
 
         // override s3 client
-        overrideS3ClientForFileUploaderAndDownloader(s3Client);
+        overrideS3ClientForFileDownloader(s3Client);
+        overrideS3AsyncClientForFileUploader(s3AsyncClient);
 
         // endpoint provider setup
         MockS3StorageServiceEndpointProvider endpointProvider = new MockS3StorageServiceEndpointProvider();
         endpointProvider.initialize(TEST_CLUSTER);
 
         // s3 uploader setup
-        SegmentUploaderConfiguration config = new SegmentUploaderConfiguration("src/test/resources", TEST_CLUSTER);
+        config = new SegmentUploaderConfiguration("src/test/resources", TEST_CLUSTER);
         S3FileUploader s3FileUploader = new MultiThreadedS3FileUploader(endpointProvider, config, environmentProvider);
 
         // create topic
@@ -172,6 +177,73 @@ public class TestDirectoryTreeWatcher extends TestBase {
                 prevDifference = diff;
             }
         }
+    }
+
+    @Test
+    void testRetryExhaustion() throws IOException, InterruptedException {
+        // override s3AsyncClient to have a very short timeout
+        MultiThreadedS3FileUploader.overrideS3Client(getS3AsyncClientWithCustomApiCallTimeout(1L));
+
+        // write to file
+        config.setUploadFailureFile(Paths.get("src/test/resources").resolve("upload_failure.txt").toString());
+
+        StorageServiceEndpointProvider endpointProvider = new MockS3StorageServiceEndpointProvider();
+        endpointProvider.initialize(TEST_CLUSTER);
+
+        MultiThreadedS3FileUploader uploader = new MultiThreadedS3FileUploader(endpointProvider, config, environmentProvider);
+
+        // upload two log files
+        TopicPartition tp = new TopicPartition(TEST_TOPIC_A, 0);
+        String offset = "00000000000000000000";
+        String offset2 = "00000000000000000294";
+        String nonExistentOffset = "00000000000000000295";
+
+        DirectoryTreeWatcher.UploadTask uploadTask = new DirectoryTreeWatcher.UploadTask(
+                tp,
+                offset,
+                String.format("%s.log", offset),
+                TEST_DATA_LOG_DIRECTORY_PATH.resolve(Paths.get(String.format("%s.log", offset)))
+        );
+        DirectoryTreeWatcher.UploadTask uploadTask2 = new DirectoryTreeWatcher.UploadTask(
+                tp,
+                offset2,
+                String.format("%s.log", offset2),
+                TEST_DATA_LOG_DIRECTORY_PATH.resolve(Paths.get(String.format("%s.log", offset2)))
+        );
+        DirectoryTreeWatcher.UploadTask nonExistentUploadTask = new DirectoryTreeWatcher.UploadTask(
+                tp,
+                nonExistentOffset,
+                String.format("%s.log", nonExistentOffset),
+                TEST_DATA_LOG_DIRECTORY_PATH.resolve(Paths.get(String.format("%s.log", nonExistentOffset)))
+        );
+
+        S3UploadCallback callback = new S3UploadCallback() {
+            @Override
+            public void onCompletion(DirectoryTreeWatcher.UploadTask uploadTask, long totalTimeMs, Throwable throwable, int statusCode) {
+                assertNotNull(throwable);
+                if (uploadTask == nonExistentUploadTask) {
+                    assertEquals(MultiThreadedS3FileUploader.UPLOAD_FILE_NOT_FOUND_ERROR_CODE, statusCode);
+                    assertTrue(Utils.isAssignableFromRecursive(throwable, NoSuchFileException.class));
+                } else {
+                    assertEquals(MultiThreadedS3FileUploader.UPLOAD_TIMEOUT_ERROR_CODE, statusCode);
+                    assertTrue(Utils.isAssignableFromRecursive(throwable, CompletionException.class));
+                }
+                directoryTreeWatcher.handleUploadCallback(uploadTask, totalTimeMs, throwable, statusCode);
+            }
+        };
+
+        uploader.uploadFile(uploadTask, callback);
+        uploader.uploadFile(uploadTask2, callback);
+        uploader.uploadFile(nonExistentUploadTask, callback);
+
+        Thread.sleep(15000);    // wait for retries to exhaust
+
+        assertEquals(config.getUploadMaxRetries(), uploadTask.getTries());
+
+         // TODO: validate contents of file and delete it after test
+
+        // override the s3AsyncClient back to original
+        MultiThreadedS3FileUploader.overrideS3Client(s3AsyncClient);
     }
 
     private static void increasePartitionsAndVerify(SharedKafkaTestResource sharedKafkaTestResource, String topic, int newPartitionCount) throws InterruptedException {

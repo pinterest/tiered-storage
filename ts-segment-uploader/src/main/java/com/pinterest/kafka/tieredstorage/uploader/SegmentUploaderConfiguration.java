@@ -62,6 +62,11 @@ public class SegmentUploaderConfiguration {
     private static final String UPLOAD_MAX_RETRIES = TS_SEGMENT_UPLOADER_PREFIX + "." + "upload.max.retries";
 
     /**
+     * File to write failed uploads information to.
+     */
+    private static final String UPLOAD_FAILURE_FILE = TS_SEGMENT_UPLOADER_PREFIX + "." + "upload.failure.file";
+
+    /**
      * Class name for {@link com.pinterest.kafka.tieredstorage.uploader.leadership.LeadershipWatcher} implementation to use.
      */
     private static final String LEADERSHIP_WATCHER_CLASS_KEY = TS_SEGMENT_UPLOADER_PREFIX + "." + "leadership.watcher.class";
@@ -208,6 +213,15 @@ public class SegmentUploaderConfiguration {
 
     public int getUploadMaxRetries() {
         return Integer.parseInt(properties.getProperty(UPLOAD_MAX_RETRIES, String.valueOf(Defaults.DEFAULT_UPLOAD_MAX_RETRIES)));
+    }
+
+    public String getUploadFailureFile() {
+        return properties.getProperty(UPLOAD_FAILURE_FILE);
+    }
+
+    @VisibleForTesting
+    protected void setUploadFailureFile(String uploadFailureFile) {
+        properties.setProperty(UPLOAD_FAILURE_FILE, uploadFailureFile);
     }
 
     @VisibleForTesting

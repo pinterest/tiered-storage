@@ -48,7 +48,8 @@ public class TestZookeeperLeadershipWatcher extends TestBase {
         environmentProvider.load();
 
         // override s3 client
-        overrideS3ClientForFileUploaderAndDownloader(s3Client);
+        overrideS3ClientForFileDownloader(s3Client);
+        overrideS3AsyncClientForFileUploader(s3AsyncClient);
 
         // endpoint provider setup
         MockS3StorageServiceEndpointProvider endpointProvider = new MockS3StorageServiceEndpointProvider();

@@ -15,10 +15,15 @@ import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.StandardWatchEventKinds;
 import java.nio.file.WatchEvent;
 import java.nio.file.WatchKey;
 import java.nio.file.WatchService;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -51,6 +56,7 @@ import java.util.regex.Pattern;
  */
 public class DirectoryTreeWatcher implements Runnable {
     private static final Logger LOG = LogManager.getLogger(DirectoryTreeWatcher.class);
+    private static final Logger FAILED_UPLOADS_LOG = LogManager.getLogger("failed-uploads");
     private static final String[] MONITORED_EXTENSIONS = {".timeindex", ".index", ".log"};
     private static final Pattern MONITORED_FILE_PATTERN = Pattern.compile("^\\d+(" + String.join("|", MONITORED_EXTENSIONS) + ")$");
     private static Map<TopicPartition, String> activeSegment;
@@ -75,6 +81,7 @@ public class DirectoryTreeWatcher implements Runnable {
     private final Object watchKeyMapLock = new Object();
     private Thread thread;
     private boolean cancelled = false;
+    private final Object failedUploadFileLock = new Object();
 
     public static void setLeadershipWatcher(LeadershipWatcher suppliedLeadershipWatcher) {
         if (leadershipWatcher == null)
@@ -142,7 +149,8 @@ public class DirectoryTreeWatcher implements Runnable {
         LOG.info("Submitting s3UploadHandler loop");
     }
 
-    private void handleUploadCallback(UploadTask uploadTask, long totalTimeMs, Throwable throwable, int statusCode) {
+    @VisibleForTesting
+    protected void handleUploadCallback(UploadTask uploadTask, long totalTimeMs, Throwable throwable, int statusCode) {
         TopicPartition topicPartition = uploadTask.getTopicPartition();
         MetricRegistryManager.getInstance(config.getMetricsConfiguration()).incrementCounter(
                 topicPartition.topic(),
@@ -315,22 +323,63 @@ public class DirectoryTreeWatcher implements Runnable {
                         "broker=" + environmentProvider.brokerId(),
                         "file=" + uploadTask.getFullFilename()
                 );
+                handleFailedUploadAfterAllRetries(uploadTask, throwable, topicPartition);
             }
         } else if (uploadTask.getTries() < config.getUploadMaxRetries()){
             // retry all other errors
             retryUpload(uploadTask.retry(), throwable, topicPartition);
         } else {
-            // retry limit reached, upload is still erroring - send a metric
-            MetricRegistryManager.getInstance(config.getMetricsConfiguration()).incrementCounter(
-                    topicPartition.topic(),
-                    topicPartition.partition(),
-                    UploaderMetrics.UPLOAD_ERROR_METRIC,
-                    "exception=" + throwable.getClass().getName(),
-                    "cluster=" + environmentProvider.clusterId(),
-                    "broker=" + environmentProvider.brokerId(),
-                    "offset=" + uploadTask.getOffset()
-            );
+            // retry limit reached, upload still errors
+            handleFailedUploadAfterAllRetries(uploadTask, throwable, topicPartition);
         }
+    }
+
+    /**
+     * Handle a failed upload after all retries have been exhausted.
+     *
+     * @param uploadTask the upload task that failed
+     * @param throwable the exception that caused the failure
+     * @param topicPartition the topic partition of the upload task
+     */
+    private void handleFailedUploadAfterAllRetries(UploadTask uploadTask, Throwable throwable, TopicPartition topicPartition) {
+        LOG.error(String.format("Failed to upload file %s to %s after reaching max %s retries.",
+                uploadTask.getAbsolutePath(), uploadTask.getUploadDestinationPathString(), uploadTask.getTries()));
+        if (config.getUploadFailureFile() != null) {
+            synchronized (failedUploadFileLock) {
+                LOG.info(String.format("Writing failed upload %s --> %s to failure file: %s",
+                        uploadTask.getAbsolutePath(), uploadTask.getUploadDestinationPathString(), config.getUploadFailureFile()));
+                try {
+                    long timestamp = System.currentTimeMillis();
+                    LocalDateTime dt = LocalDateTime.ofInstant(Instant.ofEpochMilli(timestamp), ZoneId.systemDefault());
+                    Files.write(
+                            Paths.get(config.getUploadFailureFile()),
+                            Arrays.asList(
+                                "timestamp: " + timestamp,
+                                "human_timestamp: " + dt.format(DateTimeFormatter.ISO_DATE_TIME),
+                                "task_num_retries: " + uploadTask.getTries(),
+                                "local_path: " + uploadTask.getAbsolutePath(),
+                                "destination_path: " + uploadTask.getUploadDestinationPathString(),
+                                "exception: " + throwable.getClass().getName(),
+                                "message: " + throwable.getMessage(),
+                                "-------------------"
+                            ),
+                            StandardOpenOption.CREATE,
+                            StandardOpenOption.APPEND
+                    );
+                } catch (IOException e) {
+                    LOG.error("Failed to write failed upload to failure file", e);
+                }
+            }
+        }
+        MetricRegistryManager.getInstance(config.getMetricsConfiguration()).incrementCounter(
+                topicPartition.topic(),
+                topicPartition.partition(),
+                UploaderMetrics.UPLOAD_ERROR_METRIC,
+                "exception=" + throwable.getClass().getName(),
+                "cluster=" + environmentProvider.clusterId(),
+                "broker=" + environmentProvider.brokerId(),
+                "offset=" + uploadTask.getOffset()
+        );
     }
 
     /**
@@ -952,6 +1001,7 @@ public class DirectoryTreeWatcher implements Runnable {
         private final long sizeBytes;
         private int tries = 0;
         private long nextRetryNotBeforeTimestamp = -1;
+        private String uploadDestinationPathString;
 
         public UploadTask(TopicPartition topicPartition, String offset, String fullFilename, Path absolutePath) {
             this.topicPartition = topicPartition;
@@ -1010,6 +1060,14 @@ public class DirectoryTreeWatcher implements Runnable {
 
         public long getNextRetryNotBeforeTimestamp() {
             return nextRetryNotBeforeTimestamp;
+        }
+
+        public String getUploadDestinationPathString() {
+            return uploadDestinationPathString;
+        }
+
+        public void setUploadDestinationPathString(String uploadDestinationPathString) {
+            this.uploadDestinationPathString = uploadDestinationPathString;
         }
 
         public boolean isReadyForUpload() {

@@ -1,0 +1,48 @@
+timestamp: 1734124369987
+human_timestamp: 2024-12-13T16:12:49.987
+task_num_retries: 3
+local_path: src/test/resources/log_segments/test_topic_a-0/00000000000000000000.log
+destination_path: s3://test-bucket/retention-3days/tiered_storage_test/01101/test-cluster-2/test_topic_a-0/00000000000000000000.log
+exception: java.util.concurrent.CompletionException
+message: software.amazon.awssdk.core.exception.ApiCallTimeoutException: Client execution did not complete before the specified timeout configuration: 1 millis
+-------------------
+timestamp: 1734124369994
+human_timestamp: 2024-12-13T16:12:49.994
+task_num_retries: 3
+local_path: src/test/resources/log_segments/test_topic_a-0/00000000000000000294.log
+destination_path: s3://test-bucket/retention-3days/tiered_storage_test/01101/test-cluster-2/test_topic_a-0/00000000000000000294.log
+exception: java.util.concurrent.CompletionException
+message: software.amazon.awssdk.core.exception.ApiCallTimeoutException: Client execution did not complete before the specified timeout configuration: 1 millis
+-------------------
+timestamp: 1734124372390
+human_timestamp: 2024-12-13T16:12:52.39
+task_num_retries: 4
+local_path: src/test/resources/log_segments/test_topic_a-0/00000000000000000295.log.deleted
+destination_path: s3://test-bucket/retention-3days/tiered_storage_test/01101/test-cluster-2/test_topic_a-0/00000000000000000295.log
+exception: java.io.UncheckedIOException
+message: java.nio.file.NoSuchFileException: src/test/resources/log_segments/test_topic_a-0/00000000000000000295.log.deleted
+-------------------
+timestamp: 1734127129568
+human_timestamp: 2024-12-13T16:58:49.568
+task_num_retries: 3
+local_path: src/test/resources/log_segments/test_topic_a-0/00000000000000000000.log
+destination_path: s3://test-bucket/retention-3days/tiered_storage_test/01101/test-cluster-2/test_topic_a-0/00000000000000000000.log
+exception: java.util.concurrent.CompletionException
+message: software.amazon.awssdk.core.exception.ApiCallTimeoutException: Client execution did not complete before the specified timeout configuration: 1 millis
+-------------------
+timestamp: 1734127129574
+human_timestamp: 2024-12-13T16:58:49.574
+task_num_retries: 3
+local_path: src/test/resources/log_segments/test_topic_a-0/00000000000000000294.log
+destination_path: s3://test-bucket/retention-3days/tiered_storage_test/01101/test-cluster-2/test_topic_a-0/00000000000000000294.log
+exception: java.util.concurrent.CompletionException
+message: software.amazon.awssdk.core.exception.ApiCallTimeoutException: Client execution did not complete before the specified timeout configuration: 1 millis
+-------------------
+timestamp: 1734127131962
+human_timestamp: 2024-12-13T16:58:51.962
+task_num_retries: 4
+local_path: src/test/resources/log_segments/test_topic_a-0/00000000000000000295.log.deleted
+destination_path: s3://test-bucket/retention-3days/tiered_storage_test/01101/test-cluster-2/test_topic_a-0/00000000000000000295.log
+exception: java.io.UncheckedIOException
+message: java.nio.file.NoSuchFileException: src/test/resources/log_segments/test_topic_a-0/00000000000000000295.log.deleted
+-------------------
