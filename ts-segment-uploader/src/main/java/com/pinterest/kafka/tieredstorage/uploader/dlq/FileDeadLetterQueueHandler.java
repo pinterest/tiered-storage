@@ -40,7 +40,7 @@ public class FileDeadLetterQueueHandler extends DeadLetterQueueHandler {
     }
 
     @Override
-    public Future<Boolean> sendToQueue(DirectoryTreeWatcher.UploadTask uploadTask, Throwable throwable, TopicPartition topicPartition) {
+    public Future<Boolean> send(DirectoryTreeWatcher.UploadTask uploadTask, Throwable throwable, TopicPartition topicPartition) {
         synchronized (failedUploadFileLock) {
             LOG.info(String.format("Writing failed upload %s --> %s to failure file: %s",
                     uploadTask.getAbsolutePath(), uploadTask.getUploadDestinationPathString(), filePath));
@@ -71,7 +71,7 @@ public class FileDeadLetterQueueHandler extends DeadLetterQueueHandler {
     }
 
     @Override
-    public Collection<DirectoryTreeWatcher.UploadTask> pollFromQueue() {
+    public Collection<DirectoryTreeWatcher.UploadTask> poll() {
         throw new UnsupportedOperationException("pollFromQueue is not supported for FileDeadLetterQueueHandler yet");
     }
 }

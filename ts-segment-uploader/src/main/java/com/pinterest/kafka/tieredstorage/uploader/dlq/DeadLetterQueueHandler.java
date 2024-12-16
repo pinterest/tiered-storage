@@ -7,7 +7,6 @@ import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 
 import java.util.Collection;
-import java.util.Properties;
 import java.util.concurrent.Future;
 
 import static com.pinterest.kafka.tieredstorage.uploader.SegmentUploaderConfiguration.TS_SEGMENT_UPLOADER_PREFIX;
@@ -27,9 +26,9 @@ public abstract class DeadLetterQueueHandler {
 
     protected abstract void validateConfig();
 
-    public abstract Future<Boolean> sendToQueue(DirectoryTreeWatcher.UploadTask uploadTask, Throwable throwable, TopicPartition topicPartition);
+    public abstract Future<Boolean> send(DirectoryTreeWatcher.UploadTask uploadTask, Throwable throwable, TopicPartition topicPartition);
 
-    public abstract Collection<DirectoryTreeWatcher.UploadTask> pollFromQueue();
+    public abstract Collection<DirectoryTreeWatcher.UploadTask> poll();
 
     public static DeadLetterQueueHandler createHandler(SegmentUploaderConfiguration config) {
         String className = config.getProperty(HANDLER_CLASS_CONFIG_KEY);

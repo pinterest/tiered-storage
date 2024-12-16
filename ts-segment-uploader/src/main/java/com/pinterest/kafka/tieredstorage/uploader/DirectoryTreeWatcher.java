@@ -331,15 +331,16 @@ public class DirectoryTreeWatcher implements Runnable {
     }
 
     /**
-     * Handle a failed upload after all retries have been exhausted.
+     * Handle a failed upload after all retries have been exhausted, including sending
+     * the failed upload to the dead-letter queue if configured.
      *
      * @param uploadTask the upload task that failed
      * @param throwable the exception that caused the failure
      * @param topicPartition the topic partition of the upload task
      */
     private void handleFailedUploadAfterAllRetries(UploadTask uploadTask, Throwable throwable, TopicPartition topicPartition) {
-        LOG.warn(String.format("Failed to upload file %s to %s after reaching max %s retries.",
-                uploadTask.getAbsolutePath(), uploadTask.getUploadDestinationPathString(), uploadTask.getTries()));
+        LOG.error(String.format("Max retries exhausted (%s) for upload: %s --> %s",
+                uploadTask.getTries(), uploadTask.getAbsolutePath(), uploadTask.getUploadDestinationPathString()));
         MetricRegistryManager.getInstance(config.getMetricsConfiguration()).incrementCounter(
                 topicPartition.topic(),
                 topicPartition.partition(),
@@ -350,7 +351,7 @@ public class DirectoryTreeWatcher implements Runnable {
                 "offset=" + uploadTask.getOffset()
         );
         if (deadLetterQueueHandler != null) {
-            Future<Boolean> result = deadLetterQueueHandler.sendToQueue(uploadTask, throwable, topicPartition);
+            Future<Boolean> result = deadLetterQueueHandler.send(uploadTask, throwable, topicPartition);
             boolean success;
             try {
                 success = result.get(deadLetterQueueHandler.getSendTimeoutMs(), TimeUnit.MILLISECONDS);

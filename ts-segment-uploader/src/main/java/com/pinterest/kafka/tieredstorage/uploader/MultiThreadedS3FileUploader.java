@@ -80,7 +80,7 @@ public class MultiThreadedS3FileUploader implements S3FileUploader {
             future = s3AsyncClient.putObject(putObjectRequest, uploadTask.getAbsolutePath());
         } catch (Exception e) {
             long timeSpentMs = System.currentTimeMillis() - queueTime;
-            LOG.error(String.format("Caught exception during putObject for %s --> %s in %dms", uploadTask.getAbsolutePath(), uploadPathString, timeSpentMs), e);
+            LOG.warn(String.format("Caught exception during putObject for %s --> %s in %dms", uploadTask.getAbsolutePath(), uploadPathString, timeSpentMs), e);
             int errorCode = UPLOAD_GENERAL_ERROR_CODE;
             if (Utils.isAssignableFromRecursive(e, NoSuchFileException.class)) {
                 errorCode = UPLOAD_FILE_NOT_FOUND_ERROR_CODE;
@@ -91,7 +91,7 @@ public class MultiThreadedS3FileUploader implements S3FileUploader {
         future.whenComplete((putObjectResponse, throwable) -> {
             long timeSpentMs = System.currentTimeMillis() - queueTime;
             if (throwable != null) {
-                LOG.error(String.format("PutObject failed for %s --> %s in %d ms.", uploadTask.getAbsolutePath(), uploadPathString, timeSpentMs), throwable);
+                LOG.warn(String.format("PutObject failed for %s --> %s in %d ms.", uploadTask.getAbsolutePath(), uploadPathString, timeSpentMs), throwable);
 
                 int errorCode = getErrorCode(throwable, putObjectResponse);
 
