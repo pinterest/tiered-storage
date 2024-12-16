@@ -2,6 +2,7 @@ package com.pinterest.kafka.tieredstorage.uploader;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.pinterest.kafka.tieredstorage.common.metrics.MetricRegistryManager;
+import com.pinterest.kafka.tieredstorage.uploader.dlq.DeadLetterQueueHandler;
 import com.pinterest.kafka.tieredstorage.uploader.leadership.LeadershipWatcher;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.log4j.LogManager;
@@ -15,15 +16,10 @@ import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.StandardOpenOption;
 import java.nio.file.StandardWatchEventKinds;
 import java.nio.file.WatchEvent;
 import java.nio.file.WatchKey;
 import java.nio.file.WatchService;
-import java.time.Instant;
-import java.time.LocalDateTime;
-import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -56,7 +52,6 @@ import java.util.regex.Pattern;
  */
 public class DirectoryTreeWatcher implements Runnable {
     private static final Logger LOG = LogManager.getLogger(DirectoryTreeWatcher.class);
-    private static final Logger FAILED_UPLOADS_LOG = LogManager.getLogger("failed-uploads");
     private static final String[] MONITORED_EXTENSIONS = {".timeindex", ".index", ".log"};
     private static final Pattern MONITORED_FILE_PATTERN = Pattern.compile("^\\d+(" + String.join("|", MONITORED_EXTENSIONS) + ")$");
     private static Map<TopicPartition, String> activeSegment;
@@ -78,10 +73,10 @@ public class DirectoryTreeWatcher implements Runnable {
     private final Heartbeat heartbeat;
     private final SegmentUploaderConfiguration config;
     private final KafkaEnvironmentProvider environmentProvider;
+    private final DeadLetterQueueHandler deadLetterQueueHandler;
     private final Object watchKeyMapLock = new Object();
     private Thread thread;
     private boolean cancelled = false;
-    private final Object failedUploadFileLock = new Object();
 
     public static void setLeadershipWatcher(LeadershipWatcher suppliedLeadershipWatcher) {
         if (leadershipWatcher == null)
@@ -104,6 +99,7 @@ public class DirectoryTreeWatcher implements Runnable {
         this.s3FileDownloader = new S3FileDownloader(s3FileUploader.getStorageServiceEndpointProvider(), config);
         heartbeat = new Heartbeat("watcher.logs", config, environmentProvider);
         this.config = config;
+        this.deadLetterQueueHandler = DeadLetterQueueHandler.createHandler(config);
     }
 
     /**
@@ -342,35 +338,8 @@ public class DirectoryTreeWatcher implements Runnable {
      * @param topicPartition the topic partition of the upload task
      */
     private void handleFailedUploadAfterAllRetries(UploadTask uploadTask, Throwable throwable, TopicPartition topicPartition) {
-        LOG.error(String.format("Failed to upload file %s to %s after reaching max %s retries.",
+        LOG.warn(String.format("Failed to upload file %s to %s after reaching max %s retries.",
                 uploadTask.getAbsolutePath(), uploadTask.getUploadDestinationPathString(), uploadTask.getTries()));
-        if (config.getUploadFailureFile() != null) {
-            synchronized (failedUploadFileLock) {
-                LOG.info(String.format("Writing failed upload %s --> %s to failure file: %s",
-                        uploadTask.getAbsolutePath(), uploadTask.getUploadDestinationPathString(), config.getUploadFailureFile()));
-                try {
-                    long timestamp = System.currentTimeMillis();
-                    LocalDateTime dt = LocalDateTime.ofInstant(Instant.ofEpochMilli(timestamp), ZoneId.systemDefault());
-                    Files.write(
-                            Paths.get(config.getUploadFailureFile()),
-                            Arrays.asList(
-                                "timestamp: " + timestamp,
-                                "human_timestamp: " + dt.format(DateTimeFormatter.ISO_DATE_TIME),
-                                "task_num_retries: " + uploadTask.getTries(),
-                                "local_path: " + uploadTask.getAbsolutePath(),
-                                "destination_path: " + uploadTask.getUploadDestinationPathString(),
-                                "exception: " + throwable.getClass().getName(),
-                                "message: " + throwable.getMessage(),
-                                "-------------------"
-                            ),
-                            StandardOpenOption.CREATE,
-                            StandardOpenOption.APPEND
-                    );
-                } catch (IOException e) {
-                    LOG.error("Failed to write failed upload to failure file", e);
-                }
-            }
-        }
         MetricRegistryManager.getInstance(config.getMetricsConfiguration()).incrementCounter(
                 topicPartition.topic(),
                 topicPartition.partition(),
@@ -380,6 +349,20 @@ public class DirectoryTreeWatcher implements Runnable {
                 "broker=" + environmentProvider.brokerId(),
                 "offset=" + uploadTask.getOffset()
         );
+        if (deadLetterQueueHandler != null) {
+            Future<Boolean> result = deadLetterQueueHandler.sendToQueue(uploadTask, throwable, topicPartition);
+            boolean success;
+            try {
+                success = result.get(deadLetterQueueHandler.getSendTimeoutMs(), TimeUnit.MILLISECONDS);
+            } catch (Exception e) {
+                throw new RuntimeException(String.format("Failed to persist failed upload %s to %s to dead-letter queue." +
+                        " This was a best-effort attempt.", uploadTask.getAbsolutePath(), uploadTask.getUploadDestinationPathString()), e);
+            }
+            if (success)
+                LOG.info(String.format("Sent failed upload %s to %s to dead letter queue", uploadTask.getAbsolutePath(), uploadTask.getUploadDestinationPathString()));
+            else
+                LOG.error(String.format("Failed to send failed upload %s to %s to dead letter queue", uploadTask.getAbsolutePath(), uploadTask.getUploadDestinationPathString()));
+        }
     }
 
     /**

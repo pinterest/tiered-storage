@@ -18,7 +18,7 @@ public class TestSegmentUploaderConfiguration {
     public void testInitialization() throws IOException {
         SegmentUploaderConfiguration allIncludeConfiguration = new SegmentUploaderConfiguration("src/test/resources", "test-cluster-all-include");
         SegmentUploaderConfiguration allExcludeConfiguration = new SegmentUploaderConfiguration("src/test/resources", "test-cluster-all-exclude");
-        SegmentUploaderConfiguration testConfiguration = new SegmentUploaderConfiguration("src/test/resources", "test-cluster");
+        SegmentUploaderConfiguration testConfiguration = new SegmentUploaderConfiguration("src/test/resources", "test-cluster-specific-include-exclude");
         SegmentUploaderConfiguration testSpecificIncludeConfiguration = new SegmentUploaderConfiguration("src/test/resources", "test-cluster-specific-include");
         SegmentUploaderConfiguration testSpecificExcludeConfiguration = new SegmentUploaderConfiguration("src/test/resources", "test-cluster-specific-exclude");
 

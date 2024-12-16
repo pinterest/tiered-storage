@@ -2,6 +2,8 @@ package com.pinterest.kafka.tieredstorage.uploader;
 
 import com.pinterest.kafka.tieredstorage.common.discovery.StorageServiceEndpointProvider;
 import com.pinterest.kafka.tieredstorage.common.discovery.s3.MockS3StorageServiceEndpointProvider;
+import com.pinterest.kafka.tieredstorage.uploader.dlq.DeadLetterQueueHandler;
+import com.pinterest.kafka.tieredstorage.uploader.dlq.FileDeadLetterQueueHandler;
 import com.pinterest.kafka.tieredstorage.uploader.leadership.ZookeeperLeadershipWatcher;
 import com.salesforce.kafka.test.junit5.SharedKafkaTestResource;
 import org.apache.kafka.clients.admin.AdminClient;
@@ -180,12 +182,9 @@ public class TestDirectoryTreeWatcher extends TestBase {
     }
 
     @Test
-    void testRetryExhaustion() throws IOException, InterruptedException {
+    void testRetryExhaustion() throws Exception {
         // override s3AsyncClient to have a very short timeout
         MultiThreadedS3FileUploader.overrideS3Client(getS3AsyncClientWithCustomApiCallTimeout(1L));
-
-        // write to file
-        config.setUploadFailureFile(Paths.get("src/test/resources").resolve("upload_failure.txt").toString());
 
         StorageServiceEndpointProvider endpointProvider = new MockS3StorageServiceEndpointProvider();
         endpointProvider.initialize(TEST_CLUSTER);

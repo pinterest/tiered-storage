@@ -43,7 +43,7 @@ public class TestBase {
     protected static final S3MockExtension S3_MOCK =
             S3MockExtension.builder().silent().withSecureConnection(false).build();
     protected static final String S3_BUCKET = "test-bucket";
-    protected static final String TEST_CLUSTER = "test-cluster-2";
+    protected static final String TEST_CLUSTER = "test-cluster-base";
     protected static final String TEST_TOPIC_A = "test_topic_a";
     protected static final String TEST_TOPIC_B = "test_topic_b";
     protected static final Path TEST_DATA_LOG_DIRECTORY_PATH = Paths.get("src/test/resources/log_segments/test_topic_a-0");

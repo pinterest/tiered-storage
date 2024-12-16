@@ -20,7 +20,7 @@ import java.util.regex.Pattern;
 public class SegmentUploaderConfiguration {
 
     private static final Logger LOG = LogManager.getLogger(SegmentUploaderConfiguration.class);
-    private static final String TS_SEGMENT_UPLOADER_PREFIX = "ts.segment.uploader";
+    public static final String TS_SEGMENT_UPLOADER_PREFIX = "ts.segment.uploader";
     private static final String KAFKA_PREFIX = TS_SEGMENT_UPLOADER_PREFIX + "." + "kafka";
 
     /**
@@ -62,14 +62,9 @@ public class SegmentUploaderConfiguration {
     private static final String UPLOAD_MAX_RETRIES = TS_SEGMENT_UPLOADER_PREFIX + "." + "upload.max.retries";
 
     /**
-     * File to write failed uploads information to.
-     */
-    private static final String UPLOAD_FAILURE_FILE = TS_SEGMENT_UPLOADER_PREFIX + "." + "upload.failure.file";
-
-    /**
      * Class name for {@link com.pinterest.kafka.tieredstorage.uploader.leadership.LeadershipWatcher} implementation to use.
      */
-    private static final String LEADERSHIP_WATCHER_CLASS_KEY = TS_SEGMENT_UPLOADER_PREFIX + "." + "leadership.watcher.class";
+    private static final String LEADERSHIP_WATCHER_CLASS = TS_SEGMENT_UPLOADER_PREFIX + "." + "leadership.watcher.class";
 
     /**
      * Poll interval in seconds for the leadership watcher to query the leadership state of Kafka partitions.
@@ -104,8 +99,8 @@ public class SegmentUploaderConfiguration {
             checkConfigExists(properties, STORAGE_SERVICE_ENDPOINT_PROVIDER_CLASS_KEY);
             storageServiceEndpointProviderClassName = properties.getProperty(STORAGE_SERVICE_ENDPOINT_PROVIDER_CLASS_KEY);
 
-            checkConfigExists(properties, LEADERSHIP_WATCHER_CLASS_KEY);
-            leadershipWatcherClassName = properties.getProperty(LEADERSHIP_WATCHER_CLASS_KEY);
+            checkConfigExists(properties, LEADERSHIP_WATCHER_CLASS);
+            leadershipWatcherClassName = properties.getProperty(LEADERSHIP_WATCHER_CLASS);
 
             metricsConfiguration = MetricsConfiguration.getMetricsConfiguration(properties);
 
@@ -215,13 +210,21 @@ public class SegmentUploaderConfiguration {
         return Integer.parseInt(properties.getProperty(UPLOAD_MAX_RETRIES, String.valueOf(Defaults.DEFAULT_UPLOAD_MAX_RETRIES)));
     }
 
-    public String getUploadFailureFile() {
-        return properties.getProperty(UPLOAD_FAILURE_FILE);
+    public String getProperty(String key) {
+        return properties.getProperty(key);
+    }
+
+    public String getProperty(String key, String defaultValue) {
+        return properties.getProperty(key, defaultValue);
+    }
+
+    public Properties getProperties() {
+        return properties;
     }
 
     @VisibleForTesting
-    protected void setUploadFailureFile(String uploadFailureFile) {
-        properties.setProperty(UPLOAD_FAILURE_FILE, uploadFailureFile);
+    protected void setProperty(String key, String value) {
+        properties.setProperty(key, value);
     }
 
     @VisibleForTesting
