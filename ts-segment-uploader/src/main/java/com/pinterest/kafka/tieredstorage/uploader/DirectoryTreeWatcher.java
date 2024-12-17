@@ -73,7 +73,7 @@ public class DirectoryTreeWatcher implements Runnable {
     private final Heartbeat heartbeat;
     private final SegmentUploaderConfiguration config;
     private final KafkaEnvironmentProvider environmentProvider;
-    private final DeadLetterQueueHandler deadLetterQueueHandler;
+    private DeadLetterQueueHandler deadLetterQueueHandler;
     private final Object watchKeyMapLock = new Object();
     private Thread thread;
     private boolean cancelled = false;
@@ -972,6 +972,11 @@ public class DirectoryTreeWatcher implements Runnable {
     @VisibleForTesting
     protected Map<Path, WatchKey> getWatchKeyMap() {
         return this.watchKeyMap;
+    }
+
+    @VisibleForTesting
+    protected void setDeadLetterQueueHandler(DeadLetterQueueHandler deadLetterQueueHandler) {
+        this.deadLetterQueueHandler = deadLetterQueueHandler;
     }
 
     public static class UploadTask {

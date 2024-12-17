@@ -3,7 +3,6 @@ package com.pinterest.kafka.tieredstorage.uploader;
 import com.pinterest.kafka.tieredstorage.common.discovery.StorageServiceEndpointProvider;
 import com.pinterest.kafka.tieredstorage.common.discovery.s3.MockS3StorageServiceEndpointProvider;
 import com.pinterest.kafka.tieredstorage.uploader.dlq.DeadLetterQueueHandler;
-import com.pinterest.kafka.tieredstorage.uploader.dlq.FileDeadLetterQueueHandler;
 import com.pinterest.kafka.tieredstorage.uploader.leadership.ZookeeperLeadershipWatcher;
 import com.salesforce.kafka.test.junit5.SharedKafkaTestResource;
 import org.apache.kafka.clients.admin.AdminClient;
@@ -23,11 +22,15 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.WatchKey;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -186,6 +189,29 @@ public class TestDirectoryTreeWatcher extends TestBase {
         // override s3AsyncClient to have a very short timeout
         MultiThreadedS3FileUploader.overrideS3Client(getS3AsyncClientWithCustomApiCallTimeout(1L));
 
+        Map<DirectoryTreeWatcher.UploadTask, Integer> taskToSendMap = new ConcurrentHashMap<>();
+
+        // set DLQ
+        directoryTreeWatcher.setDeadLetterQueueHandler(new DeadLetterQueueHandler(config) {
+            @Override
+            protected void validateConfig() {
+                // no-op
+            }
+
+            @Override
+            public Future<Boolean> send(DirectoryTreeWatcher.UploadTask uploadTask, Throwable throwable, TopicPartition topicPartition) {
+                taskToSendMap.computeIfAbsent(uploadTask, k -> 0);
+                taskToSendMap.put(uploadTask, taskToSendMap.get(uploadTask) + 1);
+                return CompletableFuture.completedFuture(true);
+            }
+
+            @Override
+            public Collection<DirectoryTreeWatcher.UploadTask> poll() {
+                // no-op
+                return null;
+            }
+        });
+
         StorageServiceEndpointProvider endpointProvider = new MockS3StorageServiceEndpointProvider();
         endpointProvider.initialize(TEST_CLUSTER);
 
@@ -238,8 +264,10 @@ public class TestDirectoryTreeWatcher extends TestBase {
         Thread.sleep(15000);    // wait for retries to exhaust
 
         assertEquals(config.getUploadMaxRetries(), uploadTask.getTries());
-
-         // TODO: validate contents of file and delete it after test
+        assertEquals(3, taskToSendMap.size());
+        assertEquals(1, taskToSendMap.get(uploadTask));
+        assertEquals(1, taskToSendMap.get(uploadTask2));
+        assertEquals(1, taskToSendMap.get(nonExistentUploadTask));
 
         // override the s3AsyncClient back to original
         MultiThreadedS3FileUploader.overrideS3Client(s3AsyncClient);
