@@ -26,7 +26,8 @@ public class S3LocalExecutableDeadLetterQueueHandler extends DeadLetterQueueHand
     public static final String PATH_CONFIG_KEY = DEAD_LETTER_QUEUE_CONFIG_PREFIX + "." + CONFIG_PREFIX + "." + "path";
     private final Object failedUploadFileLock = new Object();
     private final String filePath;
-    protected S3LocalExecutableDeadLetterQueueHandler(SegmentUploaderConfiguration config) {
+
+    public S3LocalExecutableDeadLetterQueueHandler(SegmentUploaderConfiguration config) {
         super(config);
         this.filePath = config.getProperty(PATH_CONFIG_KEY);
     }

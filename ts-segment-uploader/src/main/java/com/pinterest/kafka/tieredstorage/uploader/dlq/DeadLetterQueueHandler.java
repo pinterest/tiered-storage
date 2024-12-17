@@ -19,7 +19,7 @@ public abstract class DeadLetterQueueHandler {
     private static final String SEND_TIMEOUT_MS_CONFIG_KEY = DEAD_LETTER_QUEUE_CONFIG_PREFIX + "." + "send.timeout.ms";
     protected final SegmentUploaderConfiguration config;
 
-    protected DeadLetterQueueHandler(SegmentUploaderConfiguration config) {
+    public DeadLetterQueueHandler(SegmentUploaderConfiguration config) {
         this.config = config;
         validateConfig();
     }
