@@ -184,6 +184,9 @@ public class TestDirectoryTreeWatcher extends TestBase {
         }
     }
 
+    /**
+     * Test that retry exhaustion calls the DLQ handler
+     */
     @Test
     void testRetryExhaustion() throws Exception {
         // override s3AsyncClient to have a very short timeout

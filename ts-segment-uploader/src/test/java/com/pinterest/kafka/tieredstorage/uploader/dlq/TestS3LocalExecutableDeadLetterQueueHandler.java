@@ -25,6 +25,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class TestS3LocalExecutableDeadLetterQueueHandler extends TestBase {
 
+    /**
+     * Test the handler by having it send many tasks concurrently to a local executable file.
+     */
     @Test
     void testConcurrentSend() throws IOException, ExecutionException, InterruptedException {
         String filePath = "/tmp/s3-local-executable-dlq-handler-test.sh";

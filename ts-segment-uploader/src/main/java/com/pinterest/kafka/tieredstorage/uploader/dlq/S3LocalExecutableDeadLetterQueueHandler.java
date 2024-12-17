@@ -19,6 +19,10 @@ import java.util.Collection;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 
+/**
+ * A {@link DeadLetterQueueHandler} that writes failed uploads to a local executable file in a format
+ * that can be run as-is to retry the uploads.
+ */
 public class S3LocalExecutableDeadLetterQueueHandler extends DeadLetterQueueHandler {
 
     private static final Logger LOG = LogManager.getLogger(S3LocalExecutableDeadLetterQueueHandler.class);

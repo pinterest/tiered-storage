@@ -19,6 +19,9 @@ import java.util.Collection;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 
+/**
+ * A {@link DeadLetterQueueHandler} that writes failed uploads to a local file with human-readable formatting.
+ */
 public class LocalFileDeadLetterQueueHandler extends DeadLetterQueueHandler {
 
     private static final Logger LOG = LogManager.getLogger(LocalFileDeadLetterQueueHandler.class);

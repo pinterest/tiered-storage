@@ -148,6 +148,9 @@ public class TestMultiThreadedS3FileUploader extends TestBase {
         });
     }
 
+    /**
+     * Ensure that an upload that times out returns the correct error code and exception
+     */
     @Test
     void testTimeoutUpload() throws IOException {
         // override s3AsyncClient to have a very short timeout
