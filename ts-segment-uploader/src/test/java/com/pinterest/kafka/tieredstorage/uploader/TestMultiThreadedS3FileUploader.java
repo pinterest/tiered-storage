@@ -65,7 +65,7 @@ public class TestMultiThreadedS3FileUploader extends TestBase {
         endpointProvider = new MockS3StorageServiceEndpointProvider();
         endpointProvider.initialize(TEST_CLUSTER);
         MultiThreadedS3FileUploader.overrideS3Client(s3AsyncClient);
-        config = new SegmentUploaderConfiguration("src/test/resources", TEST_CLUSTER);
+        config = getSegmentUploaderConfiguration(TEST_CLUSTER);
         s3FileUploader = new MultiThreadedS3FileUploader(endpointProvider, config, environmentProvider);
     }
 

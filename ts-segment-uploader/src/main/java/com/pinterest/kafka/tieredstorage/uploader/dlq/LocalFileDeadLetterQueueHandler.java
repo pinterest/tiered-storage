@@ -19,15 +19,15 @@ import java.util.Collection;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 
-public class FileDeadLetterQueueHandler extends DeadLetterQueueHandler {
+public class LocalFileDeadLetterQueueHandler extends DeadLetterQueueHandler {
 
-    private static final Logger LOG = LogManager.getLogger(FileDeadLetterQueueHandler.class);
-    private static final String CONFIG_PREFIX = "file";
+    private static final Logger LOG = LogManager.getLogger(LocalFileDeadLetterQueueHandler.class);
+    private static final String CONFIG_PREFIX = "localfile";
     public static final String PATH_CONFIG_KEY = DEAD_LETTER_QUEUE_CONFIG_PREFIX + "." + CONFIG_PREFIX + "." + "path";
     private final Object failedUploadFileLock = new Object();
     private final String filePath;
 
-    public FileDeadLetterQueueHandler(SegmentUploaderConfiguration config) {
+    public LocalFileDeadLetterQueueHandler(SegmentUploaderConfiguration config) {
         super(config);
         this.filePath = config.getProperty(PATH_CONFIG_KEY);
     }
@@ -40,7 +40,7 @@ public class FileDeadLetterQueueHandler extends DeadLetterQueueHandler {
     }
 
     @Override
-    public Future<Boolean> send(DirectoryTreeWatcher.UploadTask uploadTask, Throwable throwable, TopicPartition topicPartition) {
+    public Future<Boolean> send(DirectoryTreeWatcher.UploadTask uploadTask, Throwable throwable) {
         synchronized (failedUploadFileLock) {
             LOG.info(String.format("Writing failed upload %s --> %s to failure file: %s",
                     uploadTask.getAbsolutePath(), uploadTask.getUploadDestinationPathString(), filePath));
@@ -72,6 +72,6 @@ public class FileDeadLetterQueueHandler extends DeadLetterQueueHandler {
 
     @Override
     public Collection<DirectoryTreeWatcher.UploadTask> poll() {
-        throw new UnsupportedOperationException("pollFromQueue is not supported for FileDeadLetterQueueHandler yet");
+        throw new UnsupportedOperationException("pollFromQueue is not supported for LocalFileDeadLetterQueueHandler yet");
     }
 }

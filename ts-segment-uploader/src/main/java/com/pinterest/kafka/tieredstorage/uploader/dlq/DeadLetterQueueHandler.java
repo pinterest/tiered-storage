@@ -26,7 +26,7 @@ public abstract class DeadLetterQueueHandler {
 
     protected abstract void validateConfig();
 
-    public abstract Future<Boolean> send(DirectoryTreeWatcher.UploadTask uploadTask, Throwable throwable, TopicPartition topicPartition);
+    public abstract Future<Boolean> send(DirectoryTreeWatcher.UploadTask uploadTask, Throwable throwable);
 
     public abstract Collection<DirectoryTreeWatcher.UploadTask> poll();
 

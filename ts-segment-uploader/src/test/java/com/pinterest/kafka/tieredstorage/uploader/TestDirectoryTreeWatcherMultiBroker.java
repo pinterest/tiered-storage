@@ -49,7 +49,7 @@ public class TestDirectoryTreeWatcherMultiBroker extends TestBase {
         endpointProvider.initialize(TEST_CLUSTER);
 
         // s3 uploader setup
-        SegmentUploaderConfiguration config = new SegmentUploaderConfiguration("src/test/resources", TEST_CLUSTER);
+        SegmentUploaderConfiguration config = getSegmentUploaderConfiguration(TEST_CLUSTER);
         S3FileUploader s3FileUploader = new MultiThreadedS3FileUploader(endpointProvider, config, environmentProvider);
 
         // create topic with replicationFactor = 2

@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 
+import static com.pinterest.kafka.tieredstorage.uploader.TestBase.getSegmentUploaderConfiguration;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -16,11 +17,11 @@ public class TestSegmentUploaderConfiguration {
      */
     @Test
     public void testInitialization() throws IOException {
-        SegmentUploaderConfiguration allIncludeConfiguration = new SegmentUploaderConfiguration("src/test/resources", "test-cluster-all-include");
-        SegmentUploaderConfiguration allExcludeConfiguration = new SegmentUploaderConfiguration("src/test/resources", "test-cluster-all-exclude");
-        SegmentUploaderConfiguration testConfiguration = new SegmentUploaderConfiguration("src/test/resources", "test-cluster-specific-include-exclude");
-        SegmentUploaderConfiguration testSpecificIncludeConfiguration = new SegmentUploaderConfiguration("src/test/resources", "test-cluster-specific-include");
-        SegmentUploaderConfiguration testSpecificExcludeConfiguration = new SegmentUploaderConfiguration("src/test/resources", "test-cluster-specific-exclude");
+        SegmentUploaderConfiguration allIncludeConfiguration = getSegmentUploaderConfiguration("test-cluster-all-include");
+        SegmentUploaderConfiguration allExcludeConfiguration = getSegmentUploaderConfiguration("test-cluster-all-exclude");
+        SegmentUploaderConfiguration testConfiguration = getSegmentUploaderConfiguration("test-cluster-specific-include-exclude");
+        SegmentUploaderConfiguration testSpecificIncludeConfiguration = getSegmentUploaderConfiguration("test-cluster-specific-include");
+        SegmentUploaderConfiguration testSpecificExcludeConfiguration = getSegmentUploaderConfiguration( "test-cluster-specific-exclude");
 
         for (int i = 0; i < 20; i++) {
             String generatedString = RandomStringUtils.randomAlphanumeric(10);

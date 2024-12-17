@@ -280,4 +280,12 @@ public class TestBase {
         }
         return gson.toJson(obj);
     }
+
+    public static SegmentUploaderConfiguration getSegmentUploaderConfiguration(String clusterName) throws IOException {
+        return new SegmentUploaderConfiguration("src/test/resources", clusterName);
+    }
+
+    public static void setProperty(SegmentUploaderConfiguration config, String key, String value) {
+        config.setProperty(key, value);
+    }
 }

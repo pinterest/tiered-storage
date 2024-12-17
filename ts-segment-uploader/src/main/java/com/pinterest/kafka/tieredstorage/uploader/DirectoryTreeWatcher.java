@@ -351,7 +351,7 @@ public class DirectoryTreeWatcher implements Runnable {
                 "offset=" + uploadTask.getOffset()
         );
         if (deadLetterQueueHandler != null) {
-            Future<Boolean> result = deadLetterQueueHandler.send(uploadTask, throwable, topicPartition);
+            Future<Boolean> result = deadLetterQueueHandler.send(uploadTask, throwable);
             boolean success;
             try {
                 success = result.get(deadLetterQueueHandler.getSendTimeoutMs(), TimeUnit.MILLISECONDS);

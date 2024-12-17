@@ -65,7 +65,7 @@ public class TestDirectoryTreeWatcher extends TestBase {
         endpointProvider.initialize(TEST_CLUSTER);
 
         // s3 uploader setup
-        config = new SegmentUploaderConfiguration("src/test/resources", TEST_CLUSTER);
+        config = getSegmentUploaderConfiguration(TEST_CLUSTER);
         S3FileUploader s3FileUploader = new MultiThreadedS3FileUploader(endpointProvider, config, environmentProvider);
 
         // create topic
@@ -199,7 +199,7 @@ public class TestDirectoryTreeWatcher extends TestBase {
             }
 
             @Override
-            public Future<Boolean> send(DirectoryTreeWatcher.UploadTask uploadTask, Throwable throwable, TopicPartition topicPartition) {
+            public Future<Boolean> send(DirectoryTreeWatcher.UploadTask uploadTask, Throwable throwable) {
                 taskToSendMap.computeIfAbsent(uploadTask, k -> 0);
                 taskToSendMap.put(uploadTask, taskToSendMap.get(uploadTask) + 1);
                 return CompletableFuture.completedFuture(true);
