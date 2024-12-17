@@ -64,7 +64,7 @@ public class SegmentUploaderConfiguration {
     /**
      * Class name for {@link com.pinterest.kafka.tieredstorage.uploader.leadership.LeadershipWatcher} implementation to use.
      */
-    private static final String LEADERSHIP_WATCHER_CLASS = TS_SEGMENT_UPLOADER_PREFIX + "." + "leadership.watcher.class";
+    private static final String LEADERSHIP_WATCHER_CLASS_KEY = TS_SEGMENT_UPLOADER_PREFIX + "." + "leadership.watcher.class";
 
     /**
      * Poll interval in seconds for the leadership watcher to query the leadership state of Kafka partitions.
@@ -99,8 +99,8 @@ public class SegmentUploaderConfiguration {
             checkConfigExists(properties, STORAGE_SERVICE_ENDPOINT_PROVIDER_CLASS_KEY);
             storageServiceEndpointProviderClassName = properties.getProperty(STORAGE_SERVICE_ENDPOINT_PROVIDER_CLASS_KEY);
 
-            checkConfigExists(properties, LEADERSHIP_WATCHER_CLASS);
-            leadershipWatcherClassName = properties.getProperty(LEADERSHIP_WATCHER_CLASS);
+            checkConfigExists(properties, LEADERSHIP_WATCHER_CLASS_KEY);
+            leadershipWatcherClassName = properties.getProperty(LEADERSHIP_WATCHER_CLASS_KEY);
 
             metricsConfiguration = MetricsConfiguration.getMetricsConfiguration(properties);
 
