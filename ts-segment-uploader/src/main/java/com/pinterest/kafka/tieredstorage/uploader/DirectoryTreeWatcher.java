@@ -2,6 +2,7 @@ package com.pinterest.kafka.tieredstorage.uploader;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.pinterest.kafka.tieredstorage.common.metrics.MetricRegistryManager;
+import com.pinterest.kafka.tieredstorage.uploader.dlq.DeadLetterQueueHandler;
 import com.pinterest.kafka.tieredstorage.uploader.leadership.LeadershipWatcher;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.log4j.LogManager;
@@ -72,6 +73,7 @@ public class DirectoryTreeWatcher implements Runnable {
     private final Heartbeat heartbeat;
     private final SegmentUploaderConfiguration config;
     private final KafkaEnvironmentProvider environmentProvider;
+    private DeadLetterQueueHandler deadLetterQueueHandler;
     private final Object watchKeyMapLock = new Object();
     private Thread thread;
     private boolean cancelled = false;
@@ -97,6 +99,7 @@ public class DirectoryTreeWatcher implements Runnable {
         this.s3FileDownloader = new S3FileDownloader(s3FileUploader.getStorageServiceEndpointProvider(), config);
         heartbeat = new Heartbeat("watcher.logs", config, environmentProvider);
         this.config = config;
+        this.deadLetterQueueHandler = DeadLetterQueueHandler.createHandler(config);
     }
 
     /**
@@ -142,7 +145,8 @@ public class DirectoryTreeWatcher implements Runnable {
         LOG.info("Submitting s3UploadHandler loop");
     }
 
-    private void handleUploadCallback(UploadTask uploadTask, long totalTimeMs, Throwable throwable, int statusCode) {
+    @VisibleForTesting
+    protected void handleUploadCallback(UploadTask uploadTask, long totalTimeMs, Throwable throwable, int statusCode) {
         TopicPartition topicPartition = uploadTask.getTopicPartition();
         MetricRegistryManager.getInstance(config.getMetricsConfiguration()).incrementCounter(
                 topicPartition.topic(),
@@ -315,21 +319,50 @@ public class DirectoryTreeWatcher implements Runnable {
                         "broker=" + environmentProvider.brokerId(),
                         "file=" + uploadTask.getFullFilename()
                 );
+                handleFailedUploadAfterAllRetries(uploadTask, throwable, topicPartition);
             }
         } else if (uploadTask.getTries() < config.getUploadMaxRetries()){
             // retry all other errors
             retryUpload(uploadTask.retry(), throwable, topicPartition);
         } else {
-            // retry limit reached, upload is still erroring - send a metric
-            MetricRegistryManager.getInstance(config.getMetricsConfiguration()).incrementCounter(
-                    topicPartition.topic(),
-                    topicPartition.partition(),
-                    UploaderMetrics.UPLOAD_ERROR_METRIC,
-                    "exception=" + throwable.getClass().getName(),
-                    "cluster=" + environmentProvider.clusterId(),
-                    "broker=" + environmentProvider.brokerId(),
-                    "offset=" + uploadTask.getOffset()
-            );
+            // retry limit reached, upload still errors
+            handleFailedUploadAfterAllRetries(uploadTask, throwable, topicPartition);
+        }
+    }
+
+    /**
+     * Handle a failed upload after all retries have been exhausted, including sending
+     * the failed upload to the dead-letter queue if configured.
+     *
+     * @param uploadTask the upload task that failed
+     * @param throwable the exception that caused the failure
+     * @param topicPartition the topic partition of the upload task
+     */
+    private void handleFailedUploadAfterAllRetries(UploadTask uploadTask, Throwable throwable, TopicPartition topicPartition) {
+        LOG.error(String.format("Max retries exhausted (%s) for upload: %s --> %s",
+                uploadTask.getTries(), uploadTask.getAbsolutePath(), uploadTask.getUploadDestinationPathString()));
+        MetricRegistryManager.getInstance(config.getMetricsConfiguration()).incrementCounter(
+                topicPartition.topic(),
+                topicPartition.partition(),
+                UploaderMetrics.UPLOAD_ERROR_METRIC,
+                "exception=" + throwable.getClass().getName(),
+                "cluster=" + environmentProvider.clusterId(),
+                "broker=" + environmentProvider.brokerId(),
+                "offset=" + uploadTask.getOffset()
+        );
+        if (deadLetterQueueHandler != null) {
+            Future<Boolean> result = deadLetterQueueHandler.send(uploadTask, throwable);
+            boolean success;
+            try {
+                success = result.get(deadLetterQueueHandler.getSendTimeoutMs(), TimeUnit.MILLISECONDS);
+            } catch (Exception e) {
+                throw new RuntimeException(String.format("Failed to persist failed upload %s to %s to dead-letter queue." +
+                        " This was a best-effort attempt.", uploadTask.getAbsolutePath(), uploadTask.getUploadDestinationPathString()), e);
+            }
+            if (success)
+                LOG.info(String.format("Sent failed upload %s to %s to dead letter queue", uploadTask.getAbsolutePath(), uploadTask.getUploadDestinationPathString()));
+            else
+                LOG.error(String.format("Failed to send failed upload %s to %s to dead letter queue", uploadTask.getAbsolutePath(), uploadTask.getUploadDestinationPathString()));
         }
     }
 
@@ -941,6 +974,11 @@ public class DirectoryTreeWatcher implements Runnable {
         return this.watchKeyMap;
     }
 
+    @VisibleForTesting
+    protected void setDeadLetterQueueHandler(DeadLetterQueueHandler deadLetterQueueHandler) {
+        this.deadLetterQueueHandler = deadLetterQueueHandler;
+    }
+
     public static class UploadTask {
         public static final int DEFAULT_BACKOFF_FACTOR = 150;   // 2 ^ max_tries * 150 ms is the max backoff time
         private final TopicPartition topicPartition;
@@ -952,6 +990,7 @@ public class DirectoryTreeWatcher implements Runnable {
         private final long sizeBytes;
         private int tries = 0;
         private long nextRetryNotBeforeTimestamp = -1;
+        private String uploadDestinationPathString;
 
         public UploadTask(TopicPartition topicPartition, String offset, String fullFilename, Path absolutePath) {
             this.topicPartition = topicPartition;
@@ -1010,6 +1049,14 @@ public class DirectoryTreeWatcher implements Runnable {
 
         public long getNextRetryNotBeforeTimestamp() {
             return nextRetryNotBeforeTimestamp;
+        }
+
+        public String getUploadDestinationPathString() {
+            return uploadDestinationPathString;
+        }
+
+        public void setUploadDestinationPathString(String uploadDestinationPathString) {
+            this.uploadDestinationPathString = uploadDestinationPathString;
         }
 
         public boolean isReadyForUpload() {

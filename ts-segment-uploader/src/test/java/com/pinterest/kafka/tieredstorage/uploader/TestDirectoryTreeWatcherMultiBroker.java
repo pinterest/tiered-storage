@@ -28,7 +28,6 @@ public class TestDirectoryTreeWatcherMultiBroker extends TestBase {
             .withBrokerProperty("log.segment.bytes", "30000")
             .withBrokerProperty("log.segment.delete.delay.ms", "5000")
             .withBrokers(2);
-    private static final String TEST_TOPIC_B = "test_topic_b";
     private DirectoryTreeWatcher directoryTreeWatcher;
     private static AdminClient adminClient;
 
@@ -42,14 +41,15 @@ public class TestDirectoryTreeWatcherMultiBroker extends TestBase {
         environmentProvider.load();
 
         // override s3 client
-        overrideS3ClientForFileUploaderAndDownloader(s3Client);
+        overrideS3ClientForFileDownloader(s3Client);
+        overrideS3AsyncClientForFileUploader(s3AsyncClient);
 
         // endpoint provider setup
         MockS3StorageServiceEndpointProvider endpointProvider = new MockS3StorageServiceEndpointProvider();
         endpointProvider.initialize(TEST_CLUSTER);
 
         // s3 uploader setup
-        SegmentUploaderConfiguration config = new SegmentUploaderConfiguration("src/test/resources", TEST_CLUSTER);
+        SegmentUploaderConfiguration config = getSegmentUploaderConfiguration(TEST_CLUSTER);
         S3FileUploader s3FileUploader = new MultiThreadedS3FileUploader(endpointProvider, config, environmentProvider);
 
         // create topic with replicationFactor = 2

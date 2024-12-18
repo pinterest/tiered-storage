@@ -20,7 +20,7 @@ import java.util.regex.Pattern;
 public class SegmentUploaderConfiguration {
 
     private static final Logger LOG = LogManager.getLogger(SegmentUploaderConfiguration.class);
-    private static final String TS_SEGMENT_UPLOADER_PREFIX = "ts.segment.uploader";
+    public static final String TS_SEGMENT_UPLOADER_PREFIX = "ts.segment.uploader";
     private static final String KAFKA_PREFIX = TS_SEGMENT_UPLOADER_PREFIX + "." + "kafka";
 
     /**
@@ -208,6 +208,23 @@ public class SegmentUploaderConfiguration {
 
     public int getUploadMaxRetries() {
         return Integer.parseInt(properties.getProperty(UPLOAD_MAX_RETRIES, String.valueOf(Defaults.DEFAULT_UPLOAD_MAX_RETRIES)));
+    }
+
+    public String getProperty(String key) {
+        return properties.getProperty(key);
+    }
+
+    public String getProperty(String key, String defaultValue) {
+        return properties.getProperty(key, defaultValue);
+    }
+
+    public Properties getProperties() {
+        return properties;
+    }
+
+    @VisibleForTesting
+    protected void setProperty(String key, String value) {
+        properties.setProperty(key, value);
     }
 
     @VisibleForTesting

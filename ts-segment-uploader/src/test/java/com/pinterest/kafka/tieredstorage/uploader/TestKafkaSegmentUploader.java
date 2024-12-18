@@ -37,9 +37,6 @@ public class TestKafkaSegmentUploader extends TestBase {
             .withBrokerProperty("log.index.interval.bytes", "100")
             .withBrokerProperty("log.segment.delete.delay.ms", "5000")
             .withBrokerProperty("log.dir", "/tmp/kafka-unit");
-    private static final String TEST_TOPIC_A = "test_topic_a";
-    private static final String TEST_TOPIC_B = "test_topic_b";
-    private static final String TEST_CLUSTER = "test-cluster-2";
     private static AdminClient adminClient;
     private KafkaSegmentUploader uploader;
     private KafkaEnvironmentProvider environmentProvider;
@@ -76,7 +73,8 @@ public class TestKafkaSegmentUploader extends TestBase {
 
     private void startSegmentUploaderThread() throws Exception {
         String configDirectory = "src/test/resources";
-        overrideS3ClientForFileUploaderAndDownloader(s3Client);
+        overrideS3ClientForFileDownloader(s3Client);
+        overrideS3AsyncClientForFileUploader(s3AsyncClient);
         uploader = new KafkaSegmentUploader(configDirectory, environmentProvider);
         uploader.start();
     }

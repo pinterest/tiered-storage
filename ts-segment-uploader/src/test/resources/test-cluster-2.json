@@ -1,4 +1,0 @@
-{
-  "ts_bucket": "test-bucket",
-  "ts_base_prefix": "retention-3days/tiered_storage_test"
-}

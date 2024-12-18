@@ -48,14 +48,15 @@ public class TestZookeeperLeadershipWatcher extends TestBase {
         environmentProvider.load();
 
         // override s3 client
-        overrideS3ClientForFileUploaderAndDownloader(s3Client);
+        overrideS3ClientForFileDownloader(s3Client);
+        overrideS3AsyncClientForFileUploader(s3AsyncClient);
 
         // endpoint provider setup
         MockS3StorageServiceEndpointProvider endpointProvider = new MockS3StorageServiceEndpointProvider();
         endpointProvider.initialize(TEST_CLUSTER);
 
         // s3 uploader setup
-        SegmentUploaderConfiguration config = new SegmentUploaderConfiguration("src/test/resources", TEST_CLUSTER);
+        SegmentUploaderConfiguration config = getSegmentUploaderConfiguration(TEST_CLUSTER);
         S3FileUploader s3FileUploader = new MultiThreadedS3FileUploader(endpointProvider, config, environmentProvider);
 
         // start directory tree watcher
