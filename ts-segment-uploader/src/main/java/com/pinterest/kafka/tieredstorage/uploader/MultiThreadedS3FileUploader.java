@@ -66,36 +66,19 @@ public class MultiThreadedS3FileUploader implements S3FileUploader {
         String uploadPathString = String.format("s3://%s/%s", s3Bucket, s3Key);
         LOG.info(String.format("Submitting upload of %s --> %s", uploadTask.getAbsolutePath(), uploadPathString));
         executorService.submit(() -> {
+            CompletableFuture<PutObjectResponse> future;
+            PutObjectRequest putObjectRequest = PutObjectRequest.builder()
+                    .bucket(s3Bucket)
+                    .key(s3Key)
+                    // Changing checksum algorithm does not seem to
+                    // have any impact regarding seeing CPU intensive
+                    // sun/security/provider/MD5.implCompress
+                    // that is observed in the flame graph.
+                    //.checksumAlgorithm(ChecksumAlgorithm.CRC32_C)
+                    .build();
+            uploadTask.setUploadDestinationPathString(uploadPathString);    // set the upload destination path so that it can be used in the callback
             try {
-                PutObjectRequest putObjectRequest = PutObjectRequest.builder()
-                        .bucket(s3Bucket)
-                        .key(s3Key)
-                        // Changing checksum algorithm does not seem to
-                        // have any impact regarding seeing CPU intensive
-                        // sun/security/provider/MD5.implCompress
-                        // that is observed in the flame graph.
-                        //.checksumAlgorithm(ChecksumAlgorithm.CRC32_C)
-                        .build();
-                uploadTask.setUploadDestinationPathString(uploadPathString);    // set the upload destination path so that it can be used in the callback
-                CompletableFuture<PutObjectResponse> future = s3AsyncClient.putObject(putObjectRequest, uploadTask.getAbsolutePath());
-                future.whenComplete((putObjectResponse, throwable) -> {
-                    long timeSpentMs = System.currentTimeMillis() - queueTime;
-                    if (throwable != null) {
-                        LOG.warn(String.format("PutObject failed for %s --> %s in %d ms.", uploadTask.getAbsolutePath(), uploadPathString, timeSpentMs), throwable);
-
-                        int errorCode = getErrorCode(throwable, putObjectResponse);
-
-                        s3UploadCallback.onCompletion(
-                                uploadTask,
-                                timeSpentMs,
-                                throwable,
-                                errorCode
-                        );
-                    } else {
-                        LOG.info(String.format("Completed upload of %s in %d ms.", uploadPathString, timeSpentMs));
-                        s3UploadCallback.onCompletion(uploadTask, timeSpentMs,null, putObjectResponse.sdkHttpResponse().statusCode());
-                    }
-                });
+                future = s3AsyncClient.putObject(putObjectRequest, uploadTask.getAbsolutePath());
             } catch (Exception e) {
                 long timeSpentMs = System.currentTimeMillis() - queueTime;
                 LOG.warn(String.format("Caught exception during putObject for %s --> %s in %dms", uploadTask.getAbsolutePath(), uploadPathString, timeSpentMs), e);
@@ -104,7 +87,26 @@ public class MultiThreadedS3FileUploader implements S3FileUploader {
                     errorCode = UPLOAD_FILE_NOT_FOUND_ERROR_CODE;
                 }
                 s3UploadCallback.onCompletion(uploadTask, timeSpentMs, e, errorCode);
+                return;
             }
+            future.whenComplete((putObjectResponse, throwable) -> {
+                long timeSpentMs = System.currentTimeMillis() - queueTime;
+                if (throwable != null) {
+                    LOG.warn(String.format("PutObject failed for %s --> %s in %d ms.", uploadTask.getAbsolutePath(), uploadPathString, timeSpentMs), throwable);
+
+                    int errorCode = getErrorCode(throwable, putObjectResponse);
+
+                    s3UploadCallback.onCompletion(
+                            uploadTask,
+                            timeSpentMs,
+                            throwable,
+                            errorCode
+                    );
+                } else {
+                    LOG.info(String.format("Completed upload of %s in %d ms.", uploadPathString, timeSpentMs));
+                    s3UploadCallback.onCompletion(uploadTask, timeSpentMs,null, putObjectResponse.sdkHttpResponse().statusCode());
+                }
+            });
         });
     }
 
