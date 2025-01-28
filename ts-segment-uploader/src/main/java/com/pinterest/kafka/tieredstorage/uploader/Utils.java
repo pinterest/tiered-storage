@@ -85,7 +85,7 @@ public class Utils {
         if (throwable == null) {
             return false;
         }
-        if (throwable.getClass().isAssignableFrom(toMatch)) {
+        if (toMatch.isAssignableFrom(throwable.getClass())) {
             return true;
         }
         return isAssignableFromRecursive(throwable.getCause(), toMatch);
