@@ -7,7 +7,7 @@ The framework also provides a consumer client that can consume from both the bro
 Pinterest's implementation of Tiered Storage for Apache Kafka® provides a ***broker-independent*** approach to Tiered Storage.
 ***See the differences between [Pinterest vs. Apache Kafka® Tiered Storage](#pinterest-vs-apache-kafka-tiered-storage)***.
 
-It consists of two main components:
+It consists of two main components: 
 1. [Uploader](ts-segment-uploader): A continuous process that runs on each Apache Kafka® broker and uploads finalized log segments to a remote storage system (e.g. Amazon S3, with unique prefix per cluster and topic).
 2. [Consumer](ts-consumer): A consumer client capable of consuming from both Tiered Storage log segments and Apache Kafka® cluster.
 
