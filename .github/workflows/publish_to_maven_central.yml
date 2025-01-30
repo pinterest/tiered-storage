@@ -6,7 +6,7 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    environment: publish
+    environment: maven_central
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
