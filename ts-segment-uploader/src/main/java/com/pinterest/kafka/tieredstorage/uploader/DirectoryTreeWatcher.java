@@ -405,14 +405,15 @@ public class DirectoryTreeWatcher implements Runnable {
             while (!cancelled) {
                 try {
                     WatchKey key = watchService.take();
+                    Path path = null;
                     for (WatchEvent<?> event : key.pollEvents()) {
                         WatchEvent.Kind<?> kind = event.kind();
                         Path subpath = (Path) event.context();
-                        Path path = ((Path) key.watchable()).resolve(subpath);
+                        path = ((Path) key.watchable()).resolve(subpath);
                         processEvent(path, kind, key);
                     }
                     if (!key.reset()) {
-                        LOG.error("WatchKey is invalid and could not be reset. Should exit program here.");
+                        LOG.warn("WatchKey for dir " + path + " is invalid and could not be reset. WatchKey will be cancelled.");
                         MetricRegistryManager.getInstance(config.getMetricsConfiguration()).incrementCounter(
                             null,
                             null,
@@ -420,7 +421,7 @@ public class DirectoryTreeWatcher implements Runnable {
                             "cluster=" + environmentProvider.clusterId(),
                             "broker=" + environmentProvider.brokerId()
                         );
-                        break;
+                        key.cancel();
                     }
                 } catch (InterruptedException e) {
                     LOG.warn("Program execution was interrupted.");
