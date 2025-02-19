@@ -24,6 +24,7 @@ public class UploaderMetrics {
     public static final String WATCHER_ADDED_METRIC = UPLOADER_METRIC_PREFIX + "." + "watcher.added";
     public static final String WATCHER_REMOVED_METRIC = UPLOADER_METRIC_PREFIX + "." + "watcher.removed";
     public static final String WATCHER_COUNT_METRIC = UPLOADER_METRIC_PREFIX + "." + "watcher.count";
+    public static final String WATCHER_KEY_RESET_METRIC = UPLOADER_METRIC_PREFIX + "." + "watcher.key.reset";
     public static final String HEARTBEAT_METRIC = UPLOADER_METRIC_PREFIX + "." + "heartbeat";
     public static final String KAFKA_LEADER_SET_METRIC = UPLOADER_METRIC_PREFIX + "." + "kafka.leader.set";
     public static final String KAFKA_LEADER_UNSET_METRIC = UPLOADER_METRIC_PREFIX + "." + "kafka.leader.unset";

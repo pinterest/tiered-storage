@@ -411,9 +411,16 @@ public class DirectoryTreeWatcher implements Runnable {
                         Path path = ((Path) key.watchable()).resolve(subpath);
                         processEvent(path, kind, key);
                     }
-
                     if (!key.reset()) {
-                        break;
+                        LOG.warn("Cancelling WatchKey for " + key.watchable() + " because it is no longer valid.");
+                        MetricRegistryManager.getInstance(config.getMetricsConfiguration()).incrementCounter(
+                                null,
+                                null,
+                                UploaderMetrics.WATCHER_KEY_RESET_METRIC,
+                                "cluster=" + environmentProvider.clusterId(),
+                                "broker=" + environmentProvider.brokerId()
+                        );
+                        key.cancel();
                     }
                 } catch (InterruptedException e) {
                     LOG.warn("Program execution was interrupted.");
