@@ -412,7 +412,7 @@ public class DirectoryTreeWatcher implements Runnable {
                         processEvent(path, kind, key);
                     }
                     if (!key.reset()) {
-                        LOG.warn("Cancelling WatchKey because it is no longer valid.");
+                        LOG.warn("Cancelling WatchKey for " + key.watchable() + " because it is no longer valid.");
                         MetricRegistryManager.getInstance(config.getMetricsConfiguration()).incrementCounter(
                                 null,
                                 null,
