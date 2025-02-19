@@ -405,15 +405,14 @@ public class DirectoryTreeWatcher implements Runnable {
             while (!cancelled) {
                 try {
                     WatchKey key = watchService.take();
-                    Path subpath = null;
                     for (WatchEvent<?> event : key.pollEvents()) {
                         WatchEvent.Kind<?> kind = event.kind();
-                        subpath = (Path) event.context();
+                        Path subpath = (Path) event.context();
                         Path path = ((Path) key.watchable()).resolve(subpath);
                         processEvent(path, kind, key);
                     }
                     if (!key.reset()) {
-                        LOG.warn("WatchKey for dir " + subpath + " is invalid and could not be reset. WatchKey will be cancelled.");
+                        LOG.warn("WatchKey for dir " + key.watchable() + " is invalid and could not be reset. WatchKey will be cancelled.");
                         MetricRegistryManager.getInstance(config.getMetricsConfiguration()).incrementCounter(
                             null,
                             null,
