@@ -470,8 +470,7 @@ public class DirectoryTreeWatcher implements Runnable {
         topicPartition = new TopicPartition(topic, partition);
 
         if (!isWatched(topicPartition)) {
-            LOG.info(String.format("Logs for %s are no longer being watched by this broker. Will skip processing.", topicPartition));
-            unwatch(topicPartition);
+            LOG.warn(String.format("Logs for %s are no longer being watched by this broker. Will skip processing.", topicPartition));
             return;
         }
 
@@ -593,8 +592,7 @@ public class DirectoryTreeWatcher implements Runnable {
 
     private void addActiveSegment(TopicPartition topicPartition, String filename) {
         if (!isWatched(topicPartition)) {
-            LOG.info(String.format("Logs for %s are no longer being watched by this broker. Will skip adding the log segment.", topicPartition));
-            unwatch(topicPartition);
+            LOG.warn(String.format("Logs for %s are no longer being watched by this broker. Will skip adding the log segment.", topicPartition));
             return;
         }
         activeSegment.put(topicPartition, filename);
@@ -926,11 +924,12 @@ public class DirectoryTreeWatcher implements Runnable {
         } catch (ExecutionException | InterruptedException | TimeoutException e) {
             LOG.warn(String.format("Adding %s to watchKeyMap timed out after %s seconds on retry #%s", dir, timeoutSecs, retries));
             if (retries < 5) {
-                Path newPath = Paths.get(dir.toString());
-                addToWatchKeyMapWithRetries(newPath, retries + 1);
+                addToWatchKeyMapWithRetries(dir, retries + 1);
             } else {
                 throw new IOException(String.format("Reached end of retries for adding %s to watchKeyMap", dir));
             }
+        } finally {
+            executor.shutdown();
         }
     }
 
@@ -973,7 +972,9 @@ public class DirectoryTreeWatcher implements Runnable {
     }
 
     private boolean isWatched(TopicPartition topicPartition) {
-        return watchKeyMap.containsKey(topLevelPath.resolve(topicPartition.toString()));
+        synchronized (watchKeyMapLock) {
+            return watchKeyMap.containsKey(topLevelPath.resolve(topicPartition.toString()));
+        }
     }
 
     @VisibleForTesting
