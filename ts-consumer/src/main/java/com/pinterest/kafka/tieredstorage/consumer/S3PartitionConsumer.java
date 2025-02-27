@@ -26,6 +26,7 @@ import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.TreeMap;
 
@@ -279,12 +280,12 @@ public class S3PartitionConsumer<K, V> {
                         record.offset(),
                         record.timestamp(),
                         TimestampType.CREATE_TIME,
-                        record.checksumOrNull() == null ? -1 : record.checksumOrNull(),
                         record.keySize(),
                         record.valueSize(),
                         record.key() == null ? null : keyDeserializer.deserialize(topicPartition.topic(), Utils.toArray(record.key())),
                         record.value() == null ? null : valueDeserializer.deserialize(topicPartition.topic(), Utils.toArray(record.value())),
-                        headers
+                        headers,
+                    Optional.empty()
                 ));
                 ++recordCount;
                 fetchSizeBytes += record.sizeInBytes();

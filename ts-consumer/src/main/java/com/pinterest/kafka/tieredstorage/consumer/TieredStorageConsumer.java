@@ -8,6 +8,7 @@ import com.pinterest.kafka.tieredstorage.common.metrics.MetricRegistryManager;
 import com.pinterest.kafka.tieredstorage.common.metrics.MetricsConfiguration;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.ConsumerGroupMetadata;
 import org.apache.kafka.clients.consumer.ConsumerRebalanceListener;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
@@ -35,6 +36,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.OptionalLong;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
@@ -193,13 +195,11 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
         subscription.clear();
         subscription.addAll(topics);
         kafkaConsumer.unsubscribe();
+        rebalanceListener.setCustomRebalanceListener(callback);
+        kafkaConsumer.subscribe(topics, rebalanceListener);
         if (tieredStorageConsumptionPossible()) {
-            rebalanceListener.setCustomRebalanceListener(callback);
-            kafkaConsumer.subscribe(topics, rebalanceListener);
             setTieredStorageLocations(topics);
         }
-        else
-            kafkaConsumer.subscribe(topics);
     }
 
     @Override
@@ -207,12 +207,11 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
         assignments.clear();
         subscription.clear();
         kafkaConsumer.unsubscribe();
+        rebalanceListener.setCustomRebalanceListener(callback);
+        kafkaConsumer.subscribe(pattern, rebalanceListener);
         if (tieredStorageConsumptionPossible()) {
-            rebalanceListener.setCustomRebalanceListener(callback);
-            kafkaConsumer.subscribe(pattern, rebalanceListener);
             setTieredStorageLocations(kafkaConsumer.subscription());
-        } else
-            kafkaConsumer.subscribe(pattern, callback);
+        }
         subscription.addAll(kafkaConsumer.subscription());
     }
 
@@ -556,6 +555,28 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
         return kafkaConsumer.committed(partition, timeout);
     }
 
+    /**
+     * Returns the committed offsets for the given partitions.
+     * @param set
+     * @return the committed offsets
+     */
+    @Override
+    public Map<TopicPartition, OffsetAndMetadata> committed(Set<TopicPartition> set) {
+        return kafkaConsumer.committed(set);
+    }
+
+    /**
+     * Returns the committed offsets for the given partitions within the given timeout period.
+     * @param set
+     * @param duration
+     * @return the committed offsets
+     */
+    @Override
+    public Map<TopicPartition, OffsetAndMetadata> committed(Set<TopicPartition> set,
+                                                            Duration duration) {
+        return kafkaConsumer.committed(set, duration);
+    }
+
     @Override
     public Map<MetricName, ? extends Metric> metrics() {
         return null;
@@ -587,6 +608,30 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
         }
         // if not only s3, end offsets must be in Kafka
         return kafkaConsumer.endOffsets(partitions, timeout);
+    }
+
+    @Override
+    @InterfaceStability.Evolving
+    public OptionalLong currentLag(TopicPartition topicPartition) {
+        throw new UnsupportedOperationException("currentLag is not supported for TieredStorageConsumer yet");
+    }
+
+    @Override
+    @InterfaceStability.Evolving
+    public ConsumerGroupMetadata groupMetadata() {
+        throw new UnsupportedOperationException("groupMetadata is not supported for TieredStorageConsumer yet");
+    }
+
+    @Override
+    @InterfaceStability.Evolving
+    public void enforceRebalance() {
+        throw new UnsupportedOperationException("enforceRebalance is not supported for TieredStorageConsumer yet");
+    }
+
+    @Override
+    @InterfaceStability.Evolving
+    public void enforceRebalance(String s) {
+        throw new UnsupportedOperationException("enforceRebalance is not supported for TieredStorageConsumer yet");
     }
 
     /**
@@ -675,7 +720,6 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
         MetricRegistryManager.getInstance(metricsConfiguration).shutdown();
     }
 
-    @Override
     public void close(long timeout, TimeUnit unit) {
         try {
             if (s3Consumer != null) {

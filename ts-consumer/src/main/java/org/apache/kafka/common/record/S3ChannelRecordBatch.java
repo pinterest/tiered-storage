@@ -1,6 +1,7 @@
 package org.apache.kafka.common.record;
 
 import org.apache.kafka.common.KafkaException;
+import org.apache.kafka.common.utils.BufferSupplier;
 import org.apache.kafka.common.utils.CloseableIterator;
 
 import java.io.IOException;
@@ -72,7 +73,6 @@ public abstract class S3ChannelRecordBatch extends AbstractRecordBatch {
         return loadFullBatch().iterator();
     }
 
-    @Override
     public CloseableIterator<Record> streamingIterator(BufferSupplier bufferSupplier) {
         return loadFullBatch().streamingIterator(bufferSupplier);
     }
