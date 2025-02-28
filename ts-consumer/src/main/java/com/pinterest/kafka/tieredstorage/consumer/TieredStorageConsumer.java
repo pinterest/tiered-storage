@@ -199,9 +199,8 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
             rebalanceListener.setCustomRebalanceListener(callback);
             kafkaConsumer.subscribe(topics, rebalanceListener);
             setTieredStorageLocations(topics);
-        }
-        else {
-            kafkaConsumer.subscribe(topics, callback);
+        } else {
+            kafkaConsumer.subscribe(topics);
         }
     }
 
@@ -584,7 +583,7 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
 
     @Override
     public Map<MetricName, ? extends Metric> metrics() {
-        return null;
+        return kafkaConsumer.metrics();
     }
 
     /**
