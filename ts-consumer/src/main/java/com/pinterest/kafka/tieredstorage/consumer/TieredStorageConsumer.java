@@ -195,10 +195,13 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
         subscription.clear();
         subscription.addAll(topics);
         kafkaConsumer.unsubscribe();
-        rebalanceListener.setCustomRebalanceListener(callback);
-        kafkaConsumer.subscribe(topics, rebalanceListener);
         if (tieredStorageConsumptionPossible()) {
+            rebalanceListener.setCustomRebalanceListener(callback);
+            kafkaConsumer.subscribe(topics, rebalanceListener);
             setTieredStorageLocations(topics);
+        }
+        else {
+            kafkaConsumer.subscribe(topics, callback);
         }
     }
 
@@ -207,10 +210,12 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
         assignments.clear();
         subscription.clear();
         kafkaConsumer.unsubscribe();
-        rebalanceListener.setCustomRebalanceListener(callback);
-        kafkaConsumer.subscribe(pattern, rebalanceListener);
         if (tieredStorageConsumptionPossible()) {
+            rebalanceListener.setCustomRebalanceListener(callback);
+            kafkaConsumer.subscribe(pattern, rebalanceListener);
             setTieredStorageLocations(kafkaConsumer.subscription());
+        } else {
+            kafkaConsumer.subscribe(pattern, callback);
         }
         subscription.addAll(kafkaConsumer.subscription());
     }
