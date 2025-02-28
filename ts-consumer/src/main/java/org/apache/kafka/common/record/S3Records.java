@@ -2,6 +2,7 @@ package org.apache.kafka.common.record;
 
 import org.apache.commons.lang3.NotImplementedException;
 import org.apache.kafka.common.KafkaException;
+import org.apache.kafka.common.network.TransferableChannel;
 import org.apache.kafka.common.utils.AbstractIterator;
 import org.apache.kafka.common.utils.Time;
 import software.amazon.awssdk.services.s3.model.S3Object;
@@ -115,8 +116,7 @@ public class S3Records extends AbstractRecords {
     }
 
     @Override
-    public long writeTo(GatheringByteChannel channel, long position, int length) {
-
+    public long writeTo(TransferableChannel channel, long position, int length) {
         throw new NotImplementedException("S3Records objects are meant to be used only for reading records from S3");
     }
 
