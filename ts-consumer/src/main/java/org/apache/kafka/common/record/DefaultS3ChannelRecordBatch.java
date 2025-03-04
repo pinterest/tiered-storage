@@ -1,6 +1,7 @@
 package org.apache.kafka.common.record;
 
 import java.nio.ByteBuffer;
+import java.util.OptionalLong;
 
 class DefaultS3ChannelRecordBatch extends S3ChannelRecordBatch {
 
@@ -55,6 +56,11 @@ class DefaultS3ChannelRecordBatch extends S3ChannelRecordBatch {
     @Override
     public boolean isTransactional() {
         return loadBatchHeader().isTransactional();
+    }
+
+    @Override
+    public OptionalLong deleteHorizonMs() {
+        return loadBatchHeader().deleteHorizonMs();
     }
 
     @Override
