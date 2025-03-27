@@ -8,6 +8,7 @@ import com.pinterest.kafka.tieredstorage.common.metrics.MetricRegistryManager;
 import com.pinterest.kafka.tieredstorage.common.metrics.MetricsConfiguration;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.ConsumerGroupMetadata;
 import org.apache.kafka.clients.consumer.ConsumerRebalanceListener;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
@@ -35,6 +36,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.OptionalLong;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
@@ -556,6 +558,29 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
         return kafkaConsumer.committed(partition, timeout);
     }
 
+    /**
+     * Returns the committed offsets for the given partitions.
+     * @param set
+     * @return the committed offsets
+     */
+    @Override
+    public Map<TopicPartition, OffsetAndMetadata> committed(Set<TopicPartition> set) {
+        return kafkaConsumer.committed(set);
+    }
+
+    /**
+     * Returns the committed offsets for the given partitions within the given timeout period.
+     * @param set
+     * @param duration
+     * @return the committed offsets
+     */
+    @Override
+    public Map<TopicPartition, OffsetAndMetadata> committed(Set<TopicPartition> set,
+                                                            Duration duration) {
+        return kafkaConsumer.committed(set, duration);
+    }
+
+
     @Override
     public Map<MetricName, ? extends Metric> metrics() {
         return kafkaConsumer.metrics();
@@ -587,6 +612,30 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
         }
         // if not only s3, end offsets must be in Kafka
         return kafkaConsumer.endOffsets(partitions, timeout);
+    }
+
+    @Override
+    @InterfaceStability.Evolving
+    public OptionalLong currentLag(TopicPartition topicPartition) {
+        throw new UnsupportedOperationException("currentLag is not supported for TieredStorageConsumer yet");
+    }
+
+    @Override
+    @InterfaceStability.Evolving
+    public ConsumerGroupMetadata groupMetadata() {
+        throw new UnsupportedOperationException("groupMetadata is not supported for TieredStorageConsumer yet");
+    }
+
+    @Override
+    @InterfaceStability.Evolving
+    public void enforceRebalance() {
+        throw new UnsupportedOperationException("enforceRebalance is not supported for TieredStorageConsumer yet");
+    }
+
+    @Override
+    @InterfaceStability.Evolving
+    public void enforceRebalance(String s) {
+        throw new UnsupportedOperationException("enforceRebalance is not supported for TieredStorageConsumer yet");
     }
 
     /**
@@ -673,18 +722,6 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
         }
         LOG.info("Closing MetricRegistryManager");
         MetricRegistryManager.getInstance(metricsConfiguration).shutdown();
-    }
-
-    @Override
-    public void close(long timeout, TimeUnit unit) {
-        try {
-            if (s3Consumer != null) {
-                this.s3Consumer.close();
-            }
-            this.kafkaConsumer.close();
-        } catch (IOException e) {
-            LOG.error("Error closing consumer", e);
-        }
     }
 
     @Override
