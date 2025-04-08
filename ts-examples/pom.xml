@@ -6,7 +6,7 @@
     <parent>
           <groupId>com.pinterest.kafka.tieredstorage</groupId>
           <artifactId>kafka-tiered-storage</artifactId>
-          <version>0.0.3-SNAPSHOT</version>
+          <version>1.0.0_2.3.1</version>
     </parent>
 
     <artifactId>ts-examples</artifactId>
