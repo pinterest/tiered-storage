@@ -558,7 +558,7 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
 
     @Override
     public Map<MetricName, ? extends Metric> metrics() {
-        return null;
+        return kafkaConsumer.metrics();
     }
 
     /**
