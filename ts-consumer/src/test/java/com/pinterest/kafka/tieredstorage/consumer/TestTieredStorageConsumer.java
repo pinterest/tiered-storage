@@ -6,6 +6,7 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.consumer.OffsetOutOfRangeException;
+import org.apache.kafka.clients.consumer.OffsetResetStrategy;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.zookeeper.KeeperException;
@@ -13,6 +14,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
@@ -44,13 +47,12 @@ public class TestTieredStorageConsumer extends TestS3Base {
 
     private static final String TEST_CLUSTER_2 = "test-cluster-2";
     private static final String TEST_TOPIC_A = "test_topic_a";
-    private static TieredStorageConsumer<String, String> tsConsumer;
+    private TieredStorageConsumer<String, String> tsConsumer;
 
     @BeforeEach
     @Override
     void setup() throws InterruptedException, IOException, KeeperException, ExecutionException, ClassNotFoundException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
         super.setup();
-        tsConsumer = getTieredStorageConsumer();
         S3Utils.overrideS3Client(s3Client);
         S3OffsetIndexHandler.overrideS3Client(s3Client);
         createTopicAndVerify(sharedKafkaTestResource, TEST_TOPIC_A, 3);
@@ -67,8 +69,14 @@ public class TestTieredStorageConsumer extends TestS3Base {
     /**
      * Test that the consumer assigned to a single topic partition can consume records from Kafka only
      */
-    @Test
-    void testSingleTopicPartitionAssignConsumptionNoS3() {
+    @ParameterizedTest
+    @EnumSource(TieredStorageConsumer.TieredStorageMode.class)
+    void testSingleTopicPartitionAssignConsumptionNoS3(TieredStorageConsumer.TieredStorageMode mode) throws IOException, ClassNotFoundException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
+        if (mode == TieredStorageConsumer.TieredStorageMode.TIERED_STORAGE_ONLY) {
+            LOG.info("Skipping testSingleTopicPartitionAssignConsumptionNoS3 for TIERED_STORAGE_ONLY mode");
+            return;
+        }
+        tsConsumer = getTieredStorageConsumer(mode);
         TopicPartition tp = new TopicPartition(TEST_TOPIC_A, 0);
         tsConsumer.assign(Collections.singleton(tp));
         ConsumerRecords<String, String> records = tsConsumer.poll(Duration.ofMillis(100));
@@ -117,8 +125,14 @@ public class TestTieredStorageConsumer extends TestS3Base {
     /**
      * Test subscribe consumption from Kafka only
      */
-    @Test
-    void testSingleTopicSubscribeConsumptionNoS3() {
+    @ParameterizedTest
+    @EnumSource(TieredStorageConsumer.TieredStorageMode.class)
+    void testSingleTopicSubscribeConsumptionNoS3(TieredStorageConsumer.TieredStorageMode mode) throws IOException, ClassNotFoundException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
+        if (mode == TieredStorageConsumer.TieredStorageMode.TIERED_STORAGE_ONLY) {
+            LOG.info("Skipping testSingleTopicSubscribeConsumptionNoS3 for TIERED_STORAGE_ONLY mode");
+            return;
+        }
+        tsConsumer = getTieredStorageConsumer(mode);
         tsConsumer.subscribe(Collections.singleton(TEST_TOPIC_A));
         sendTestData(TEST_TOPIC_A, 0, 100);
         sendTestData(TEST_TOPIC_A, 1, 100);
@@ -182,8 +196,14 @@ public class TestTieredStorageConsumer extends TestS3Base {
     /**
      * Testing that seek correctly sets the position for the partition
      */
-    @Test
-    void testSeek() {
+    @ParameterizedTest
+    @EnumSource(TieredStorageConsumer.TieredStorageMode.class)
+    void testSeek(TieredStorageConsumer.TieredStorageMode mode) throws IOException, ClassNotFoundException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
+        if (mode == TieredStorageConsumer.TieredStorageMode.TIERED_STORAGE_ONLY) {
+            LOG.info("Skipping testSeek for TIERED_STORAGE_ONLY mode");
+            return;
+        }
+        tsConsumer = getTieredStorageConsumer(mode);
         Collection<TopicPartition> toAssign = new HashSet<>(Arrays.asList(new TopicPartition(TEST_TOPIC_A, 0), new TopicPartition(TEST_TOPIC_A, 2)));
         tsConsumer.assign(toAssign);
         sendTestData(TEST_TOPIC_A, 0, 100);
@@ -252,8 +272,14 @@ public class TestTieredStorageConsumer extends TestS3Base {
      * Test that the consumer can consume records from S3 only
      * @throws IOException
      */
-    @Test
-    void testTieredStorageConsumption() throws IOException {
+    @ParameterizedTest
+    @EnumSource(TieredStorageConsumer.TieredStorageMode.class)
+    void testTieredStorageConsumption(TieredStorageConsumer.TieredStorageMode mode) throws IOException, ClassNotFoundException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
+        if (mode == TieredStorageConsumer.TieredStorageMode.KAFKA_ONLY) {
+            LOG.info("Skipping testTieredStorageConsumption for KAFKA_ONLY mode");
+            return;
+        }
+        tsConsumer = getTieredStorageConsumer(TieredStorageConsumer.TieredStorageMode.TIERED_STORAGE_ONLY);
         prepareS3Mocks();
         putObjects(TEST_CLUSTER_2, TEST_TOPIC_A, 0, "src/test/resources/log-files/test_topic_a-0");
         tsConsumer.assign(Collections.singleton(new TopicPartition(TEST_TOPIC_A, 0)));
@@ -288,7 +314,8 @@ public class TestTieredStorageConsumer extends TestS3Base {
      * @throws IOException
      */
     @Test
-    void testKafkaToTieredStorageConsumption() throws IOException {
+    void testKafkaToTieredStorageConsumption() throws IOException, ClassNotFoundException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
+        tsConsumer = getTieredStorageConsumer(TieredStorageConsumer.TieredStorageMode.KAFKA_PREFERRED);
         int numRecords = 5000;
         TopicPartition tp = new TopicPartition(TEST_TOPIC_A, 0);
         tsConsumer.assign(Collections.singleton(new TopicPartition(TEST_TOPIC_A, 0)));
@@ -325,7 +352,8 @@ public class TestTieredStorageConsumer extends TestS3Base {
      * @throws IOException
      */
     @Test
-    void testTieredStorageToKafkaConsumption() throws IOException {
+    void testTieredStorageToKafkaConsumption() throws IOException, ClassNotFoundException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
+        tsConsumer = getTieredStorageConsumer(TieredStorageConsumer.TieredStorageMode.KAFKA_PREFERRED);
         int numRecords = 5000;
         TopicPartition tp = new TopicPartition(TEST_TOPIC_A, 0);
         tsConsumer.assign(Collections.singleton(new TopicPartition(TEST_TOPIC_A, 0)));
@@ -367,7 +395,8 @@ public class TestTieredStorageConsumer extends TestS3Base {
      * Test beginningOffsets when the offset is in S3
      */
     @Test
-    void testBeginningOffsetsS3() {
+    void testBeginningOffsetsS3() throws IOException, ClassNotFoundException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
+        tsConsumer = getTieredStorageConsumer(TieredStorageConsumer.TieredStorageMode.KAFKA_PREFERRED);
         // put s3 objects starting at offset 1000
         putEmptyObjects(TEST_CLUSTER_2, TEST_TOPIC_A, 0, 1000, 1000, 1000);
 
@@ -378,6 +407,15 @@ public class TestTieredStorageConsumer extends TestS3Base {
         tsConsumer.close();
     }
 
+    @Test
+    void testKafkaOnlySeekAndPosition() throws IOException, ClassNotFoundException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
+        tsConsumer = getTieredStorageConsumer(TieredStorageConsumer.TieredStorageMode.KAFKA_ONLY);
+        TopicPartition tp = new TopicPartition(TEST_TOPIC_A, 0);
+        tsConsumer.assign(Collections.singleton(tp));
+        assertEquals(0L, tsConsumer.position(tp));
+        tsConsumer.close();
+    }
+
     private void assertNoMoreRecords(Duration checkTime) {
         long begin = System.currentTimeMillis();
         while (System.currentTimeMillis() - begin < checkTime.toMillis()) {
@@ -385,7 +423,7 @@ public class TestTieredStorageConsumer extends TestS3Base {
         }
     }
 
-    private static TieredStorageConsumer<String, String> getTieredStorageConsumer() throws IOException, ClassNotFoundException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
+    private static TieredStorageConsumer<String, String> getTieredStorageConsumer(TieredStorageConsumer.TieredStorageMode mode) throws IOException, ClassNotFoundException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
         String bootstrapServers = sharedKafkaTestResource.getKafkaConnectString();
 
         Properties properties = new Properties();
@@ -396,7 +434,8 @@ public class TestTieredStorageConsumer extends TestS3Base {
         properties.setProperty(ConsumerConfig.CLIENT_ID_CONFIG, "tiered-storage-client-id");
         properties.setProperty(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, "20000");
         properties.setProperty(ConsumerConfig.MAX_PARTITION_FETCH_BYTES_CONFIG, "209715200");
-        properties.setProperty(TieredStorageConsumerConfig.TIERED_STORAGE_MODE_CONFIG, TieredStorageConsumer.TieredStorageMode.KAFKA_PREFERRED.toString());
+        properties.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, OffsetResetStrategy.EARLIEST.toString());
+        properties.setProperty(TieredStorageConsumerConfig.TIERED_STORAGE_MODE_CONFIG, mode.toString());
         properties.setProperty(TieredStorageConsumerConfig.KAFKA_CLUSTER_ID_CONFIG, TEST_CLUSTER_2);
         properties.setProperty(TieredStorageConsumerConfig.OFFSET_RESET_CONFIG, TieredStorageConsumer.OffsetReset.EARLIEST.toString());
         properties.setProperty(TieredStorageConsumerConfig.STORAGE_SERVICE_ENDPOINT_PROVIDER_CLASS_CONFIG, MockS3StorageServiceEndpointProvider.class.getName());

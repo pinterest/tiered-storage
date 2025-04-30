@@ -82,11 +82,14 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
 
     public TieredStorageConsumer(Properties properties, Deserializer<K> keyDeserializer, Deserializer<V> valueDeserializer) throws IOException, ClassNotFoundException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
         this.tieredStorageMode = TieredStorageMode.valueOf(properties.getProperty(TieredStorageConsumerConfig.TIERED_STORAGE_MODE_CONFIG));
+        if (!isModeSupported(tieredStorageMode)) {
+            throw new IllegalArgumentException("Tiered storage mode " + tieredStorageMode + " is not supported at the moment");
+        }
 
         this.metricsConfiguration = MetricsConfiguration.getMetricsConfiguration(properties);
 
         if (tieredStorageConsumptionPossible()) {
-            LOG.info("Tiered storage consumption is possible");
+            LOG.info("Tiered storage consumption is possible. Mode= " + tieredStorageMode);
             this.kafkaClusterId = properties.getProperty(TieredStorageConsumerConfig.KAFKA_CLUSTER_ID_CONFIG);
             properties.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "none");
             String offsetResetConfig = properties.getProperty(TieredStorageConsumerConfig.OFFSET_RESET_CONFIG, "latest").toLowerCase().trim();
@@ -200,8 +203,10 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
             kafkaConsumer.subscribe(topics, rebalanceListener);
             setTieredStorageLocations(topics);
         }
-        else
+        else {
             kafkaConsumer.subscribe(topics);
+        }
+        subscription.addAll(kafkaConsumer.subscription());
     }
 
     @Override
@@ -249,8 +254,12 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
             kafkaConsumer.assign(topicPartitions);
             rebalanceListener.onPartitionsAssigned(topicPartitions);
             topicPartitions.forEach(tp -> setTieredStorageLocations(Collections.singleton(tp.topic())));
+            s3Consumer.assign(assignments);
         } else {
             kafkaConsumer.assign(topicPartitions);
+        }
+        for (TopicPartition topicPartition: topicPartitions) {
+            positions.put(topicPartition, kafkaConsumer.position(topicPartition));
         }
     }
 
@@ -302,8 +311,8 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
 
         } else {
             // regular kafka poll
-             records = kafkaConsumer.poll(timeout);
-             ts.set(false);
+            records = kafkaConsumer.poll(timeout);
+            ts.set(false);
         }
 
         // emit metrics
@@ -821,6 +830,10 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
     }
 
     public enum TieredStorageMode {
-        KAFKA_PREFERRED, TIERED_STORAGE_PREFERRED, KAFKA_ONLY, TIERED_STORAGE_ONLY
+        KAFKA_PREFERRED, KAFKA_ONLY, TIERED_STORAGE_ONLY
+    }
+
+    public static boolean isModeSupported(TieredStorageMode mode) {
+        return mode == TieredStorageMode.KAFKA_PREFERRED || mode == TieredStorageMode.KAFKA_ONLY || mode == TieredStorageMode.TIERED_STORAGE_ONLY;
     }
 }
