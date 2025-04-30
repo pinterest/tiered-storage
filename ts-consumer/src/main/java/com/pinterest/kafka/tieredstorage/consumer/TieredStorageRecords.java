@@ -38,7 +38,7 @@ public class TieredStorageRecords<K, V> {
 
     public synchronized ConsumerRecords<K, V> records() {
         // Copy to avoid concurrent modification exception
-        return new ConsumerRecords<>(Collections.unmodifiableMap(records));
+        return new ConsumerRecords<>(Collections.unmodifiableMap(new HashMap<>(records)));
     }
 
     public void clear() {
