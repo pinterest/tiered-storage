@@ -257,9 +257,9 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
             s3Consumer.assign(assignments);
         } else {
             kafkaConsumer.assign(topicPartitions);
-        }
-        for (TopicPartition topicPartition: topicPartitions) {
-            positions.put(topicPartition, kafkaConsumer.position(topicPartition));
+            for (TopicPartition topicPartition: topicPartitions) {
+                positions.put(topicPartition, kafkaConsumer.position(topicPartition));
+            }
         }
     }
 

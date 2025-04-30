@@ -71,7 +71,7 @@ public class TestTieredStorageConsumer extends TestS3Base {
      */
     @ParameterizedTest
     @EnumSource(TieredStorageConsumer.TieredStorageMode.class)
-    void testSingleTopicPartitionAssignConsumptionNoS3(TieredStorageConsumer.TieredStorageMode mode) throws IOException, ClassNotFoundException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
+    void testSingleTopicPartitionAssignConsumptionNoTieredStorage(TieredStorageConsumer.TieredStorageMode mode) throws IOException, ClassNotFoundException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
         if (mode == TieredStorageConsumer.TieredStorageMode.TIERED_STORAGE_ONLY) {
             LOG.info("Skipping testSingleTopicPartitionAssignConsumptionNoS3 for TIERED_STORAGE_ONLY mode");
             return;
@@ -127,7 +127,7 @@ public class TestTieredStorageConsumer extends TestS3Base {
      */
     @ParameterizedTest
     @EnumSource(TieredStorageConsumer.TieredStorageMode.class)
-    void testSingleTopicSubscribeConsumptionNoS3(TieredStorageConsumer.TieredStorageMode mode) throws IOException, ClassNotFoundException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
+    void testSingleTopicSubscribeConsumptionNoTieredStorage(TieredStorageConsumer.TieredStorageMode mode) throws IOException, ClassNotFoundException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
         if (mode == TieredStorageConsumer.TieredStorageMode.TIERED_STORAGE_ONLY) {
             LOG.info("Skipping testSingleTopicSubscribeConsumptionNoS3 for TIERED_STORAGE_ONLY mode");
             return;
@@ -408,7 +408,7 @@ public class TestTieredStorageConsumer extends TestS3Base {
     }
 
     @Test
-    void testKafkaOnlySeekAndPosition() throws IOException, ClassNotFoundException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
+    void testKafkaOnlyAssignAndPosition() throws IOException, ClassNotFoundException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
         tsConsumer = getTieredStorageConsumer(TieredStorageConsumer.TieredStorageMode.KAFKA_ONLY);
         TopicPartition tp = new TopicPartition(TEST_TOPIC_A, 0);
         tsConsumer.assign(Collections.singleton(tp));
