@@ -70,7 +70,7 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
     private final TieredStorageMode tieredStorageMode;
     private final Map<TopicPartition, Long> positions = new HashMap<>();
     private AssignmentAwareConsumerRebalanceListener rebalanceListener;
-    private ConsumerRecords<K, V> records;
+    private ConsumerRecords<K, V> records = new ConsumerRecords<>(new HashMap<>());
     private final Set<TopicPartition> tieredStoragePartitions = new HashSet<>();
     private final MetricsConfiguration metricsConfiguration;
     private int s3PrefixEntropyNumBits = -1;
