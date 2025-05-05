@@ -440,7 +440,7 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
     private Map<TopicPartition, Long> getCurrentOffsetsToCommit() {
         Map<TopicPartition, Long> offsetsToCommit = new HashMap<>();
         tieredStoragePartitions.forEach(topicPartition -> {
-            if (!(records.isEmpty() || records.records(topicPartition).isEmpty())) {
+            if (!(records.records(topicPartition).isEmpty())) {
                 offsetsToCommit.put(
                         topicPartition,
                         records.records(topicPartition).get(records.records(topicPartition).size() - 1).offset()
