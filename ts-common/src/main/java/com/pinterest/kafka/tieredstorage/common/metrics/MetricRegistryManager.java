@@ -13,6 +13,7 @@ import java.util.Arrays;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -168,12 +169,17 @@ public class MetricRegistryManager {
         return metricRegistryAndReporterMap.computeIfAbsent(serializedMetricTagString, k -> {
             MetricRegistry registry = new MetricRegistry();
             ScheduledReporter reporter = getMetricsReporter(registry, serializedMetricTagString, (s, m) -> true);
-            executorService.scheduleAtFixedRate(
-                    reporter::report,
-                    Math.abs(serializedMetricTagString.hashCode()) % REPORTER_FREQUENCY_MS,
-                    REPORTER_FREQUENCY_MS,
-                    TimeUnit.MILLISECONDS
-            );            return new MetricRegistryAndReporter(registry, reporter);
+            try {
+                executorService.scheduleAtFixedRate(
+                        reporter::report,
+                        Math.abs(serializedMetricTagString.hashCode()) % REPORTER_FREQUENCY_MS,
+                        REPORTER_FREQUENCY_MS,
+                        TimeUnit.MILLISECONDS
+                );
+            } catch (RejectedExecutionException ree) {
+                LOG.warn("Failed to schedule reporter for " + serializedMetricTagString, ree);
+            }
+            return new MetricRegistryAndReporter(registry, reporter);
         });
     }
 
