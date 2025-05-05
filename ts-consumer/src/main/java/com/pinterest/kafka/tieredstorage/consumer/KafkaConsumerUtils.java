@@ -29,13 +29,13 @@ public class KafkaConsumerUtils {
     public static void commitSync(@SuppressWarnings("rawtypes") KafkaConsumer kafkaConsumer, Map<TopicPartition, OffsetAndMetadata> offsets, Duration timeout) {
         kafkaConsumer.commitSync(offsets, timeout);
         offsets.forEach((key, value) -> kafkaConsumer.seek(key, value.offset() + 1));
-        LOG.info("Committed offsets: " + offsets);
+        LOG.debug("Committed offsets: " + offsets);
     }
 
     public static void commitAsync(@SuppressWarnings("rawtypes") KafkaConsumer kafkaConsumer, Map<TopicPartition, OffsetAndMetadata> offsets, OffsetCommitCallback callback) {
         kafkaConsumer.commitAsync(offsets, callback);
         offsets.forEach((key, value) -> kafkaConsumer.seek(key, value.offset() + 1));
-        LOG.info("Committed offsets: " + offsets);
+        LOG.debug("Committed offsets: " + offsets);
     }
 
     public static void resetOffsetToLatest(@SuppressWarnings("rawtypes") KafkaConsumer kafkaConsumer, TopicPartition topicPartition) {
