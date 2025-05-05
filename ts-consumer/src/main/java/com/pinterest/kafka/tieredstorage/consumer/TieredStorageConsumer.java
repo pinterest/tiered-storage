@@ -322,11 +322,11 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
                     pollTime, "ts=" + ts, "group=" + consumerGroup, "cluster=" + kafkaClusterId);
         });
         returnRecords.partitions().forEach(topicPartition -> {
-            MetricRegistryManager.getInstance(metricsConfiguration).updateCounter(topicPartition.topic(), topicPartition.partition(), ConsumerMetrics.OFFSET_CONSUMED_TOTAL_METRIC,
+            MetricRegistryManager.getInstance(metricsConfiguration).updateHistogram(topicPartition.topic(), topicPartition.partition(), ConsumerMetrics.OFFSET_CONSUMED_TOTAL_METRIC,
                     returnRecords.records(topicPartition).size(),
                     "ts=" + ts, "group=" + consumerGroup, "cluster=" + kafkaClusterId);
             if (!returnRecords.records(topicPartition).isEmpty()) {
-                MetricRegistryManager.getInstance(metricsConfiguration).updateCounter(topicPartition.topic(), topicPartition.partition(), ConsumerMetrics.OFFSET_CONSUMED_LATEST_METRIC,
+                MetricRegistryManager.getInstance(metricsConfiguration).updateHistogram(topicPartition.topic(), topicPartition.partition(), ConsumerMetrics.OFFSET_CONSUMED_LATEST_METRIC,
                         returnRecords.records(topicPartition).get(returnRecords.records(topicPartition).size() - 1).offset(),
                         "ts=" + ts, "group=" + consumerGroup, "cluster=" + kafkaClusterId);
             }
@@ -437,6 +437,19 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
         return records;
     }
 
+    private Map<TopicPartition, Long> getCurrentOffsetsToCommit() {
+        Map<TopicPartition, Long> offsetsToCommit = new HashMap<>();
+        tieredStoragePartitions.forEach(topicPartition -> {
+            if (!(records.records(topicPartition).isEmpty())) {
+                offsetsToCommit.put(
+                        topicPartition,
+                        records.records(topicPartition).get(records.records(topicPartition).size() - 1).offset()
+                );
+            }
+        });
+        return offsetsToCommit;
+    }
+
     /**
      * Commits the offsets of the records returned by the last poll
      */
@@ -445,7 +458,7 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
         if (tieredStoragePartitions.isEmpty())
             kafkaConsumer.commitSync();
         else
-            KafkaConsumerUtils.commitSync(kafkaConsumer, KafkaConsumerUtils.getOffsetsAndMetadata(positions), Duration.ofMillis(Long.MAX_VALUE));
+            KafkaConsumerUtils.commitSync(kafkaConsumer, KafkaConsumerUtils.getOffsetsAndMetadata(getCurrentOffsetsToCommit()), Duration.ofMillis(Long.MAX_VALUE));
     }
 
     @Override
@@ -453,7 +466,7 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
         if (tieredStoragePartitions.isEmpty())
             kafkaConsumer.commitSync(timeout);
         else
-            KafkaConsumerUtils.commitSync(kafkaConsumer, KafkaConsumerUtils.getOffsetsAndMetadata(positions), timeout);
+            KafkaConsumerUtils.commitSync(kafkaConsumer, KafkaConsumerUtils.getOffsetsAndMetadata(getCurrentOffsetsToCommit()), timeout);
     }
 
     @Override
@@ -477,7 +490,7 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
         if (tieredStoragePartitions.isEmpty())
             kafkaConsumer.commitAsync();
         else
-            KafkaConsumerUtils.commitAsync(kafkaConsumer, KafkaConsumerUtils.getOffsetsAndMetadata(positions), null);
+            KafkaConsumerUtils.commitAsync(kafkaConsumer, KafkaConsumerUtils.getOffsetsAndMetadata(getCurrentOffsetsToCommit()), null);
     }
 
     @Override
@@ -485,7 +498,7 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
         if (tieredStoragePartitions.isEmpty())
             kafkaConsumer.commitAsync(callback);
         else
-            KafkaConsumerUtils.commitAsync(kafkaConsumer, KafkaConsumerUtils.getOffsetsAndMetadata(positions), callback);
+            KafkaConsumerUtils.commitAsync(kafkaConsumer, KafkaConsumerUtils.getOffsetsAndMetadata(getCurrentOffsetsToCommit()), callback);
     }
 
     @Override
