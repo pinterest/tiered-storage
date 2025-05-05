@@ -70,7 +70,7 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
     private final TieredStorageMode tieredStorageMode;
     private final Map<TopicPartition, Long> positions = new HashMap<>();
     private AssignmentAwareConsumerRebalanceListener rebalanceListener;
-    private ConsumerRecords<K, V> records;
+    private final TieredStorageRecords<K, V> records = new TieredStorageRecords<>();
     private final Set<TopicPartition> tieredStoragePartitions = new HashSet<>();
     private final MetricsConfiguration metricsConfiguration;
     private int s3PrefixEntropyNumBits = -1;
@@ -280,7 +280,7 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
     public ConsumerRecords<K, V> poll(Duration timeout) {
         // TODO: implement timeout check while waiting for partition assignment
         long beforePollMs = System.currentTimeMillis();
-        ConsumerRecords<K, V> returnRecords;
+        ConsumerRecords<K, V> records;
         AtomicBoolean ts = new AtomicBoolean(false);
         if (tieredStorageConsumptionPossible()) {
             int count = 0;
@@ -299,51 +299,50 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
             assert count == 0;  // TODO: how to handle this case?
 
             if (tieredStorageMode == TieredStorageMode.KAFKA_PREFERRED) {
-                returnRecords = handleTieredStoragePoll(timeout, ts);
+                records = handleTieredStoragePoll(timeout, ts);
             } else if (tieredStorageMode == TieredStorageMode.TIERED_STORAGE_ONLY) {
-                returnRecords = handleTieredStorageOnlyPoll(timeout, ts);
+                records = handleTieredStorageOnlyPoll(timeout, ts);
             } else {
                 tieredStoragePartitions.clear();
-//                this.records.clear();
+                this.records.clear();
                 LOG.warn("TieredStorageMode " + tieredStorageMode + " is not supported at the moment");
-                returnRecords = ConsumerRecords.empty();   // return empty records for now
+                records = this.records.records();   // return empty records for now
             }
 
         } else {
             // regular kafka poll
-            returnRecords = kafkaConsumer.poll(timeout);
+            records = kafkaConsumer.poll(timeout);
             ts.set(false);
         }
 
         // emit metrics
         long pollTime = System.currentTimeMillis() - beforePollMs;
-        returnRecords.partitions().forEach(topicPartition -> {
+        records.partitions().forEach(topicPartition -> {
             MetricRegistryManager.getInstance(metricsConfiguration).updateHistogram(topicPartition.topic(), topicPartition.partition(), ConsumerMetrics.CONSUMER_POLL_TIME_MS_METRIC,
                     pollTime, "ts=" + ts, "group=" + consumerGroup, "cluster=" + kafkaClusterId);
         });
-        returnRecords.partitions().forEach(topicPartition -> {
+        records.partitions().forEach(topicPartition -> {
             MetricRegistryManager.getInstance(metricsConfiguration).updateHistogram(topicPartition.topic(), topicPartition.partition(), ConsumerMetrics.OFFSET_CONSUMED_TOTAL_METRIC,
-                    returnRecords.records(topicPartition).size(),
+                    records.records(topicPartition).size(),
                     "ts=" + ts, "group=" + consumerGroup, "cluster=" + kafkaClusterId);
-            if (!returnRecords.records(topicPartition).isEmpty()) {
+            if (!records.records(topicPartition).isEmpty()) {
                 MetricRegistryManager.getInstance(metricsConfiguration).updateHistogram(topicPartition.topic(), topicPartition.partition(), ConsumerMetrics.OFFSET_CONSUMED_LATEST_METRIC,
-                        returnRecords.records(topicPartition).get(returnRecords.records(topicPartition).size() - 1).offset(),
+                        records.records(topicPartition).get(records.records(topicPartition).size() - 1).offset(),
                         "ts=" + ts, "group=" + consumerGroup, "cluster=" + kafkaClusterId);
             }
         });
 
         // update positions
-        returnRecords.partitions().forEach(tp -> {
-            if (!returnRecords.records(tp).isEmpty()) {
-                long lastOffset = returnRecords.records(tp).get(returnRecords.records(tp).size() - 1).offset();
+        records.partitions().forEach(tp -> {
+            if (!records.records(tp).isEmpty()) {
+                long lastOffset = records.records(tp).get(records.records(tp).size() - 1).offset();
                 positions.put(tp, lastOffset + 1);
             }
         });
 
         if (ts.get())   // need to seek kafkaConsumer if previous consumption was from s3
             KafkaConsumerUtils.resetOffsets(kafkaConsumer, positions);
-        this.records = returnRecords;
-        return returnRecords;
+        return records;
     }
 
     @Override
@@ -358,12 +357,12 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
      * @return records
      */
     private ConsumerRecords<K, V> handleTieredStorageOnlyPoll(Duration timeout, AtomicBoolean ts) {
-//        records.clear();
+        records.clear();
         tieredStoragePartitions.clear();
         s3Consumer.setPositions(positions);
-        ConsumerRecords<K, V> records = s3Consumer.poll(maxRecordsPerPoll);
+        records.addRecords(s3Consumer.poll(maxRecordsPerPoll));
         ts.set(true);
-        return records;
+        return records.records();
     }
 
     /**
@@ -376,11 +375,10 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
      * @return
      */
     private ConsumerRecords<K, V> handleTieredStoragePoll(Duration timeout, AtomicBoolean ts) {
-//        records.clear();
-        ConsumerRecords<K, V> records = ConsumerRecords.empty();
+        records.clear();
         tieredStoragePartitions.clear();
         try {
-            records = kafkaConsumer.poll(timeout);
+            records.addRecords(kafkaConsumer.poll(timeout));
             ts.set(false);
         } catch (NoOffsetForPartitionException e1) {
             LOG.debug("Hit NoOffsetForPartitionException: " + e1.partitions());
@@ -400,7 +398,7 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
                     LOG.debug(String.format("%s: NoOffsetForPartition on Kafka: Going to reset offsets to positions for S3 consumption: %s.",
                             offsetReset, positions));
                     s3Consumer.setPositions(positions);
-                    records = s3Consumer.poll(maxRecordsPerPoll);
+                    records.addRecords(s3Consumer.poll(maxRecordsPerPoll));
                     tieredStoragePartitions.addAll(e1.partitions());
                     ts.set(true);
                     break;
@@ -424,7 +422,7 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
                     s3Consumer.setPositions(positions);
                     LOG.debug(String.format("%s: OffsetOutOfRange on Kafka: Going to reset offsets to positions for S3 consumption: %s.",
                             offsetReset, positions));
-                    records = s3Consumer.poll(maxRecordsPerPoll);
+                    records.addRecords(s3Consumer.poll(maxRecordsPerPoll));
                     tieredStoragePartitions.addAll(e2.partitions());
                     ts.set(true);
                     break;
@@ -434,16 +432,16 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
                 commitSync();
             }
         }
-        return records;
+        return records.records();
     }
 
     private Map<TopicPartition, Long> getCurrentOffsetsToCommit() {
         Map<TopicPartition, Long> offsetsToCommit = new HashMap<>();
         tieredStoragePartitions.forEach(topicPartition -> {
-            if (!(records.records(topicPartition).isEmpty())) {
+            if (!(records.records().records(topicPartition).isEmpty())) {
                 offsetsToCommit.put(
                         topicPartition,
-                        records.records(topicPartition).get(records.records(topicPartition).size() - 1).offset()
+                        records.records().records(topicPartition).get(records.records().records(topicPartition).size() - 1).offset()
                 );
             }
         });

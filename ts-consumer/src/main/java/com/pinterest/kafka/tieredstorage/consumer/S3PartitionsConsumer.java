@@ -92,7 +92,7 @@ public class S3PartitionsConsumer<K, V> {
     public ConsumerRecords<K, V> poll(int maxRecords) {
         int consumedSoFar = 0;
         int round = 0;
-        Map<TopicPartition, List<ConsumerRecord<K, V>>> recordMap = new HashMap<>();
+        TieredStorageRecords<K, V> tieredStorageRecords = new TieredStorageRecords<>();
         while (round < topicPartitions.size()) {
             LOG.debug(String.format("Current stored positions: %s", positions));
             TopicPartition topicPartition = topicPartitions.get(nextPartitionIndex());
@@ -109,14 +109,16 @@ public class S3PartitionsConsumer<K, V> {
                     s3PartitionConsumerMap.get(topicPartition).poll(toPartiallyConsume, false);
             consumedSoFar += records.size();
             ++round;
-            recordMap.put(topicPartition, records);
+            tieredStorageRecords.addRecords(topicPartition, records);
         }
-        s3PartitionConsumerMap.forEach((tp, c) -> {
-            long pos = c.getPosition();
-            positions.computeIfPresent(tp, (k, v) -> pos);
-        });
+        if (tieredStorageRecords.records().count() > 0) {
+            s3PartitionConsumerMap.forEach((tp, c) -> {
+                long pos = c.getPosition();
+                positions.computeIfPresent(tp, (k, v) -> pos);
+            });
+        }
         LOG.debug("positions: " + positions);
-        return new ConsumerRecords<>(recordMap);
+        return tieredStorageRecords.records();
     }
 
     /**
