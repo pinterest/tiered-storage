@@ -132,11 +132,12 @@ public class TestTieredStorageConsumer extends TestS3Base {
             LOG.info("Skipping testSingleTopicSubscribeConsumptionNoS3 for TIERED_STORAGE_ONLY mode");
             return;
         }
-        tsConsumer = getTieredStorageConsumer(mode);
-        tsConsumer.subscribe(Collections.singleton(TEST_TOPIC_A));
         sendTestData(TEST_TOPIC_A, 0, 100);
         sendTestData(TEST_TOPIC_A, 1, 100);
         sendTestData(TEST_TOPIC_A, 2, 100);
+
+        tsConsumer = getTieredStorageConsumer(mode);
+        tsConsumer.subscribe(Collections.singleton(TEST_TOPIC_A));
 
         List<ConsumerRecord<String, String>> consumed = new ArrayList<>();
         while (consumed.size() < 300) {
@@ -191,6 +192,61 @@ public class TestTieredStorageConsumer extends TestS3Base {
         assertEquals(1100L, tsConsumer.getPositions().get(new TopicPartition(TEST_TOPIC_A, 1)));
         assertEquals(100L, tsConsumer.getPositions().get(new TopicPartition(TEST_TOPIC_A, 2)));
         tsConsumer.close();
+    }
+
+    @ParameterizedTest
+    @EnumSource(TieredStorageConsumer.TieredStorageMode.class)
+    void testSubscribeConsumptionTieredStorage(TieredStorageConsumer.TieredStorageMode mode) throws IOException, ClassNotFoundException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException, InterruptedException {
+        if (mode == TieredStorageConsumer.TieredStorageMode.KAFKA_ONLY) {
+            LOG.info("Skipping testSubscribeConsumptionTieredStorage for KAFKA_ONLY mode");
+            return;
+        }
+
+        prepareS3Mocks();
+        putObjects(TEST_CLUSTER_2, TEST_TOPIC_A, 0, "src/test/resources/log-files/test_topic_a-0");
+        putObjects(TEST_CLUSTER_2, TEST_TOPIC_A, 1, "src/test/resources/log-files/test_topic_a-1");
+        putObjects(TEST_CLUSTER_2, TEST_TOPIC_A, 2, "src/test/resources/log-files/test_topic_a-2");
+        tsConsumer = getTieredStorageConsumer(TieredStorageConsumer.TieredStorageMode.TIERED_STORAGE_ONLY);
+
+        tsConsumer.subscribe(Collections.singleton(TEST_TOPIC_A));
+//        kafkaConsumer.seekToBeginning(Arrays.asList(
+//                new TopicPartition(TEST_TOPIC_A, 0),
+//                new TopicPartition(TEST_TOPIC_A, 1),
+//                new TopicPartition(TEST_TOPIC_A, 2))
+//        ); // TODO: seek to middle
+
+        ConsumerRecords<String, String> records;
+        int[] consumedByPartition = new int[3];
+        int totalConsumed = 0;
+        while (totalConsumed < TEST_TOPIC_A_P0_NUM_RECORDS + TEST_TOPIC_A_P1_NUM_RECORDS + TEST_TOPIC_A_P2_NUM_RECORDS) {
+            records = tsConsumer.poll(Duration.ofMillis(100));
+            if (records.isEmpty()) {
+                LOG.info("Polled empty records");
+                Thread.sleep(500);
+                continue;
+            }
+            for (ConsumerRecord<String, String> record : records) {
+                int partition = record.partition();
+                String expectedRecordKey = String.valueOf(consumedByPartition[partition]);
+
+                // known record values
+                assertEquals(expectedRecordKey, record.key());
+                assertEquals("val-" + expectedRecordKey, record.value());
+                assertEquals("header1", record.headers().headers("header1").iterator().next().key());
+                assertEquals("header1-val", new String(record.headers().headers("header1").iterator().next().value()));
+                consumedByPartition[partition]++;
+            }
+            totalConsumed = consumedByPartition[0] + consumedByPartition[1] + consumedByPartition[2];
+        }
+
+        assertNoMoreRecords(Duration.ofSeconds(5));
+        assertEquals(TEST_TOPIC_A_P0_NUM_RECORDS, consumedByPartition[0]);
+        assertEquals(TEST_TOPIC_A_P1_NUM_RECORDS, consumedByPartition[1]);
+        assertEquals(TEST_TOPIC_A_P2_NUM_RECORDS, consumedByPartition[2]);
+        assertEquals(TEST_TOPIC_A_P0_NUM_RECORDS + TEST_TOPIC_A_P1_NUM_RECORDS + TEST_TOPIC_A_P2_NUM_RECORDS, totalConsumed);
+
+        tsConsumer.close();
+        closeS3Mocks();
     }
 
     /**
@@ -287,6 +343,7 @@ public class TestTieredStorageConsumer extends TestS3Base {
         when(outOfRangeKafkaConsumer.poll(any())).thenThrow(new OffsetOutOfRangeException(new HashMap() {{
             put(new TopicPartition(TEST_TOPIC_A, 0), 0L);
         }}));
+        when(outOfRangeKafkaConsumer.assignment()).thenReturn(Collections.singleton(new TopicPartition(TEST_TOPIC_A, 0)));
         tsConsumer.setKafkaConsumer(outOfRangeKafkaConsumer);
 
         ConsumerRecords<String, String> records;
@@ -303,8 +360,8 @@ public class TestTieredStorageConsumer extends TestS3Base {
                 consumed++;
             }
         }
-        assertEquals(TEST_DATA_NUM_RECORDS, consumed);
-        assertEquals(TEST_DATA_NUM_RECORDS, tsConsumer.getPositions().get(new TopicPartition(TEST_TOPIC_A, 0)));
+        assertEquals(TEST_TOPIC_A_P0_NUM_RECORDS, consumed);
+        assertEquals(TEST_TOPIC_A_P0_NUM_RECORDS, tsConsumer.getPositions().get(new TopicPartition(TEST_TOPIC_A, 0)));
         tsConsumer.close();
         closeS3Mocks();
     }
@@ -336,13 +393,14 @@ public class TestTieredStorageConsumer extends TestS3Base {
         when(outOfRangeKafkaConsumer.poll(any())).thenThrow(new OffsetOutOfRangeException(new HashMap() {{
             put(new TopicPartition(TEST_TOPIC_A, 0), 0L);
         }}));
+        when(outOfRangeKafkaConsumer.assignment()).thenReturn(Collections.singleton(tp));
         tsConsumer.setKafkaConsumer(outOfRangeKafkaConsumer);
 
         while ((records = tsConsumer.poll(Duration.ofMillis(100))).count() > 0) {
             consumed += records.count();
         }
-        assertEquals(TEST_DATA_NUM_RECORDS, consumed);
-        assertEquals(TEST_DATA_NUM_RECORDS, tsConsumer.getPositions().get(tp));
+        assertEquals(TEST_TOPIC_A_P0_NUM_RECORDS, consumed);
+        assertEquals(TEST_TOPIC_A_P0_NUM_RECORDS, tsConsumer.getPositions().get(tp));
         tsConsumer.close();
         closeS3Mocks();
     }
@@ -368,6 +426,7 @@ public class TestTieredStorageConsumer extends TestS3Base {
         when(outOfRangeKafkaConsumer.poll(any())).thenThrow(new OffsetOutOfRangeException(new HashMap() {{
             put(new TopicPartition(TEST_TOPIC_A, 0), 0L);
         }}));
+        when(outOfRangeKafkaConsumer.assignment()).thenReturn(Collections.singleton(tp));
         tsConsumer.setKafkaConsumer(outOfRangeKafkaConsumer);
 
         while (consumed < numRecords * 0.2 && !(records = tsConsumer.poll(Duration.ofMillis(100))).isEmpty()) {

@@ -30,7 +30,7 @@ public class AssignmentAwareConsumerRebalanceListener implements ConsumerRebalan
     private final Map<TopicPartition, Long> position;
     private final Map<TopicPartition, Long> committed;
     private final TieredStorageConsumer.OffsetReset offsetReset;
-    private final AtomicBoolean isPartitionAssignmentComplete = new AtomicBoolean(true);
+    private final AtomicBoolean isPartitionAssignmentComplete = new AtomicBoolean(false);
     private ConsumerRebalanceListener customListener = null;
 
     public AssignmentAwareConsumerRebalanceListener(

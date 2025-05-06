@@ -39,7 +39,6 @@ import java.util.Map;
 import java.util.OptionalLong;
 import java.util.Properties;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Pattern;
 
@@ -196,7 +195,6 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
     public void subscribe(Collection<String> topics, ConsumerRebalanceListener callback) {
         assignments.clear();
         subscription.clear();
-        subscription.addAll(topics);
         kafkaConsumer.unsubscribe();
         if (tieredStorageConsumptionPossible()) {
             rebalanceListener.setCustomRebalanceListener(callback);
@@ -204,7 +202,10 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
             setTieredStorageLocations(topics);
         }
         else {
-            kafkaConsumer.subscribe(topics);
+            if (callback != null)
+                kafkaConsumer.subscribe(topics, callback);
+            else
+                kafkaConsumer.subscribe(topics);
         }
         subscription.addAll(kafkaConsumer.subscription());
     }
@@ -283,20 +284,8 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
         ConsumerRecords<K, V> records;
         AtomicBoolean ts = new AtomicBoolean(false);
         if (tieredStorageConsumptionPossible()) {
-            int count = 0;
-            while (assignments.isEmpty() && subscription.isEmpty()) {
-                count = kafkaConsumer.poll(Duration.ofMillis(1000)).count();
-                while (!rebalanceListener.isPartitionAssignmentComplete()) {
-                    LOG.info("Waiting for partition assignment!");
-                    try {
-                        Thread.sleep(500);
-                    } catch (InterruptedException e) {
-                        throw new RuntimeException(e);
-                    }
-                }
-            }
+            maybeWaitForPartitionAssignment(timeout);
             // consumed count must be 0 at this point
-            assert count == 0;  // TODO: how to handle this case?
 
             if (tieredStorageMode == TieredStorageMode.KAFKA_PREFERRED) {
                 records = handleTieredStoragePoll(timeout, ts);
@@ -345,6 +334,24 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
         return records;
     }
 
+    private void maybeWaitForPartitionAssignment(Duration timeout) {
+        while (kafkaConsumer.assignment().isEmpty()) {
+            LOG.info("Waiting for partition assignment to complete...");
+            try {
+                kafkaConsumer.poll(timeout);
+            } catch (NoOffsetForPartitionException | OffsetOutOfRangeException e) {
+                // this is expected if tieredStorageConsumption is enabled and no offsets are available (auto.offset.reset=none)
+                System.out.println("Hit NoOffsetForPartitionException or OffsetOutOfRangeException: " + e);
+                continue;
+            }
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+        }
+    }
+
     @Override
     public ConsumerRecords<K, V> poll(long timeout) {
         return poll(Duration.ofMillis(timeout));
@@ -359,6 +366,7 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
     private ConsumerRecords<K, V> handleTieredStorageOnlyPoll(Duration timeout, AtomicBoolean ts) {
         records.clear();
         tieredStoragePartitions.clear();
+        s3Consumer.assign(assignments);
         s3Consumer.setPositions(positions);
         records.addRecords(s3Consumer.poll(maxRecordsPerPoll));
         ts.set(true);

@@ -98,7 +98,7 @@ public class TestS3PartitionConsumer extends TestS3Base {
                 numRecords++;
             }
         }
-        assertEquals(TEST_DATA_NUM_RECORDS, numRecords); // based on log segment files
+        assertEquals(TEST_TOPIC_A_P0_NUM_RECORDS, numRecords); // based on log segment files
         closeS3Mocks();
     }
 

@@ -45,7 +45,7 @@ public class S3Consumer<K, V> {
      * @param topicPartitions the partitions to assign
      */
     public void assign(Collection<TopicPartition> topicPartitions) {
-        if (this.assignment.equals(topicPartitions))
+        if (this.assignment.containsAll(topicPartitions))
             return;
 
         this.assignment.clear();

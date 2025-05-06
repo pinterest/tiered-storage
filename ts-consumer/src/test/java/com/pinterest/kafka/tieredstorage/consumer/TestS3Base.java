@@ -46,7 +46,9 @@ public class TestS3Base extends TestBase {
     protected static final String CLIENT_ID = "tiered-storage-consumer";
     protected static final int MAX_POLL_RECORDS = 20000;
     protected static final long MAX_PARTITION_FETCH_BYTES = 209715200;
-    protected static final int TEST_DATA_NUM_RECORDS = 10995;   // mock test data living in src/test/resources/log-files
+    protected static final int TEST_TOPIC_A_P0_NUM_RECORDS = 10995;   // mock test data living in src/test/resources/log-files/test_topic_a-0
+    protected static final int TEST_TOPIC_A_P1_NUM_RECORDS = 10019;   // mock test data living in src/test/resources/log-files/test_topic_a-1
+    protected static final int TEST_TOPIC_A_P2_NUM_RECORDS = 10249;    // mock test data living in src/test/resources/log-files/test_topic_a-2
 
     @RegisterExtension
     protected static final S3MockExtension S3_MOCK =
