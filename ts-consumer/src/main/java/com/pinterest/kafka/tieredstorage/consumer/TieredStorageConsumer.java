@@ -322,11 +322,11 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
                     pollTime, "ts=" + ts, "group=" + consumerGroup, "cluster=" + kafkaClusterId);
         });
         records.partitions().forEach(topicPartition -> {
-            MetricRegistryManager.getInstance(metricsConfiguration).updateHistogram(topicPartition.topic(), topicPartition.partition(), ConsumerMetrics.OFFSET_CONSUMED_TOTAL_METRIC,
+            MetricRegistryManager.getInstance(metricsConfiguration).updateCounter(topicPartition.topic(), topicPartition.partition(), ConsumerMetrics.OFFSET_CONSUMED_TOTAL_METRIC,
                     records.records(topicPartition).size(),
                     "ts=" + ts, "group=" + consumerGroup, "cluster=" + kafkaClusterId);
             if (!records.records(topicPartition).isEmpty()) {
-                MetricRegistryManager.getInstance(metricsConfiguration).updateHistogram(topicPartition.topic(), topicPartition.partition(), ConsumerMetrics.OFFSET_CONSUMED_LATEST_METRIC,
+                MetricRegistryManager.getInstance(metricsConfiguration).updateCounter(topicPartition.topic(), topicPartition.partition(), ConsumerMetrics.OFFSET_CONSUMED_LATEST_METRIC,
                         records.records(topicPartition).get(records.records(topicPartition).size() - 1).offset(),
                         "ts=" + ts, "group=" + consumerGroup, "cluster=" + kafkaClusterId);
             }
