@@ -89,7 +89,7 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
         this.metricsConfiguration = MetricsConfiguration.getMetricsConfiguration(properties);
 
         if (tieredStorageConsumptionPossible()) {
-            LOG.info("Tiered storage consumption is possible. Mode= " + tieredStorageMode);
+            LOG.info("Tiered storage consumption is possible. Consumption mode: " + tieredStorageMode);
             this.kafkaClusterId = properties.getProperty(TieredStorageConsumerConfig.KAFKA_CLUSTER_ID_CONFIG);
             properties.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "none");
             String offsetResetConfig = properties.getProperty(TieredStorageConsumerConfig.OFFSET_RESET_CONFIG, "latest").toLowerCase().trim();
@@ -722,15 +722,15 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
         LOG.info("Closing kafkaConsumer");
         this.kafkaConsumer.close();
         if (this.s3Consumer != null) {
-            LOG.info("Closing s3Consumer");
             try {
+                LOG.info("Closing s3Consumer");
                 this.s3Consumer.close();
-            } catch (IOException e) {
-                LOG.warn("IOException while closing S3Consumer", e);
+                LOG.info("Closing MetricRegistryManager");
+                MetricRegistryManager.getInstance(metricsConfiguration).shutdown();
+            } catch (IOException | InterruptedException e) {
+                LOG.warn("Exception while closing", e);
             }
         }
-        LOG.info("Closing MetricRegistryManager");
-        MetricRegistryManager.getInstance(metricsConfiguration).shutdown();
     }
 
     @Override
