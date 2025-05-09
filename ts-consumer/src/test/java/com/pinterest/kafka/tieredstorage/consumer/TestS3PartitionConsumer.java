@@ -1,5 +1,6 @@
 package com.pinterest.kafka.tieredstorage.consumer;
 
+import com.pinterest.kafka.tieredstorage.common.CommonTestUtils;
 import com.pinterest.kafka.tieredstorage.common.metrics.MetricsConfiguration;
 import com.pinterest.kafka.tieredstorage.common.metrics.NoOpMetricsReporter;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
@@ -87,14 +88,7 @@ public class TestS3PartitionConsumer extends TestS3Base {
         int numRecords = 0;
         while (!(records = s3PartitionConsumer.poll(100)).isEmpty()) {
             for (ConsumerRecord<String, String> record : records) {
-                String currRecordNumString = String.valueOf(numRecords);
-
-                // known record values
-                assertEquals(currRecordNumString, record.key());
-                assertEquals("val-" + currRecordNumString, record.value());
-                assertEquals("header1", record.headers().headers("header1").iterator().next().key());
-                assertEquals("header1-val", new String(record.headers().headers("header1").iterator().next().value()));
-
+                CommonTestUtils.validateRecordContent(CommonTestUtils.RecordContentType.TIERED_STORAGE, record);
                 numRecords++;
             }
         }

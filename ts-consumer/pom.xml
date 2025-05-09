@@ -24,6 +24,13 @@
             <version>${project.version}</version>
         </dependency>
         <dependency>
+            <groupId>com.pinterest.kafka.tieredstorage</groupId>
+            <artifactId>ts-common</artifactId>
+            <version>${project.version}</version>
+            <classifier>tests</classifier>
+            <type>test-jar</type>
+        </dependency>
+        <dependency>
             <groupId>software.amazon.nio.s3</groupId>
             <artifactId>aws-java-nio-spi-for-s3</artifactId>
             <version>1.1.1</version>

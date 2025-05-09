@@ -45,7 +45,7 @@ public class S3Consumer<K, V> {
      * @param topicPartitions the partitions to assign
      */
     public void assign(Collection<TopicPartition> topicPartitions) {
-        if (this.assignment.containsAll(topicPartitions))
+        if (this.assignment.equals(topicPartitions))
             return;
 
         this.assignment.clear();
@@ -103,8 +103,8 @@ public class S3Consumer<K, V> {
      * @param maxRecordsToConsume the maximum number of records to consume
      * @return the {@link ConsumerRecords} consumed from S3
      */
-    public ConsumerRecords<K, V> poll(int maxRecordsToConsume) {
-        ConsumerRecords<K, V> records = s3PartitionsConsumer.poll(maxRecordsToConsume);
+    public ConsumerRecords<K, V> poll(int maxRecordsToConsume, Collection<TopicPartition> partitions) {
+        ConsumerRecords<K, V> records = s3PartitionsConsumer.poll(maxRecordsToConsume, partitions);
         setPositions(s3PartitionsConsumer.getPositions());
         return records;
     }
