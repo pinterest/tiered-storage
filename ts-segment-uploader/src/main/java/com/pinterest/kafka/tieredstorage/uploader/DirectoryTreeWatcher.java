@@ -165,7 +165,7 @@ public class DirectoryTreeWatcher implements Runnable {
             }
             if (uploadTask.getSubPath().endsWith(".log")) {
                 if (uploadTask.getFullFilename().endsWith(".log")) {
-                    MetricRegistryManager.getInstance(config.getMetricsConfiguration()).updateHistogram(
+                    MetricRegistryManager.getInstance(config.getMetricsConfiguration()).updateCounter(
                             topicPartition.topic(),
                             topicPartition.partition(),
                             UploaderMetrics.UPLOAD_SIZE_BYTES_METRIC,
@@ -213,7 +213,7 @@ public class DirectoryTreeWatcher implements Runnable {
                 (k, v) -> (v == null || uploadTask.getOffset().compareTo(v) > 0) ? uploadTask.getOffset() : v
         );
 
-        MetricRegistryManager.getInstance(config.getMetricsConfiguration()).updateHistogram(
+        MetricRegistryManager.getInstance(config.getMetricsConfiguration()).updateCounter(
                 topicPartition.topic(),
                 topicPartition.partition(),
                 UploaderMetrics.UPLOAD_COMPLETED_METRIC,

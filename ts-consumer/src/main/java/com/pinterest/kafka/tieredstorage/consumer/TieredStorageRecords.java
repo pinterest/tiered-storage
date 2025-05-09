@@ -6,6 +6,7 @@ import org.apache.kafka.common.TopicPartition;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -33,8 +34,9 @@ public class TieredStorageRecords<K, V> {
         );
     }
 
-    public ConsumerRecords<K, V> records() {
-        return new ConsumerRecords<>(records);
+    public synchronized ConsumerRecords<K, V> records() {
+        // Copy to avoid concurrent modification exception
+        return new ConsumerRecords<>(Collections.unmodifiableMap(new HashMap<>(records)));
     }
 
     public void clear() {

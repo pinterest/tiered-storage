@@ -5,7 +5,7 @@
     <parent>
         <artifactId>kafka-tiered-storage</artifactId>
         <groupId>com.pinterest.kafka.tieredstorage</groupId>
-        <version>1.0.0</version>
+        <version>1.0.1-SNAPSHOT</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
@@ -21,6 +21,13 @@
             <groupId>com.pinterest.kafka.tieredstorage</groupId>
             <artifactId>ts-common</artifactId>
             <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.pinterest.kafka.tieredstorage</groupId>
+            <artifactId>ts-common</artifactId>
+            <version>${project.version}</version>
+            <classifier>tests</classifier>
+            <type>test-jar</type>
         </dependency>
         <dependency>
             <groupId>org.apache.logging.log4j</groupId>

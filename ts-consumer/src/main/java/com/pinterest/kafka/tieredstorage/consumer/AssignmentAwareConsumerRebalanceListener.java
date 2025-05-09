@@ -23,24 +23,22 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @SuppressWarnings({"rawtypes", "unchecked"})
 public class AssignmentAwareConsumerRebalanceListener implements ConsumerRebalanceListener {
     private static final Logger LOG = LogManager.getLogger(AssignmentAwareConsumerRebalanceListener.class.getName());
-    private final Set<TopicPartition> assignment;
     private final KafkaConsumer kafkaConsumer;
     private final String consumerGroup;
     private final Properties properties;
     private final Map<TopicPartition, Long> position;
     private final Map<TopicPartition, Long> committed;
     private final TieredStorageConsumer.OffsetReset offsetReset;
-    private final AtomicBoolean isPartitionAssignmentComplete = new AtomicBoolean(true);
+    private final AtomicBoolean isPartitionAssignmentComplete = new AtomicBoolean(false);
     private ConsumerRebalanceListener customListener = null;
 
     public AssignmentAwareConsumerRebalanceListener(
             KafkaConsumer kafkaConsumer, String consumerGroup, Properties properties,
-            Set<TopicPartition> assignment, Map<TopicPartition, Long> position,
+            Map<TopicPartition, Long> position,
             Map<TopicPartition, Long> committed, TieredStorageConsumer.OffsetReset offsetReset) {
         this.kafkaConsumer = kafkaConsumer;
         this.consumerGroup = consumerGroup;
         this.properties = properties;
-        this.assignment = assignment;
         this.position = position;
         this.committed = committed;
         this.offsetReset = offsetReset;
@@ -54,7 +52,6 @@ public class AssignmentAwareConsumerRebalanceListener implements ConsumerRebalan
     public void onPartitionsRevoked(Collection<TopicPartition> collection) {
         isPartitionAssignmentComplete.set(false);
         LOG.info(String.format("Partitions revoked: " + collection));
-        this.assignment.removeAll(collection);
         collection.forEach(position::remove);
         isPartitionAssignmentComplete.set(true);
         if (customListener != null)
@@ -65,8 +62,6 @@ public class AssignmentAwareConsumerRebalanceListener implements ConsumerRebalan
     public void onPartitionsAssigned(Collection<TopicPartition> collection) {
         isPartitionAssignmentComplete.set(false);
         LOG.info(String.format("Partitions assigned: " + collection));
-        this.assignment.clear();
-        this.assignment.addAll(collection);
         // consumer has received new partitions. the starting consumption offset would be
         // 1. stored group offset
         // 2. if there is no group offset, consumer config (earliest, latest, none)
@@ -77,7 +72,7 @@ public class AssignmentAwareConsumerRebalanceListener implements ConsumerRebalan
             position.clear();
             Map<TopicPartition, OffsetAndMetadata> partitionToGroupOffset;
             partitionToGroupOffset = adminClient.listConsumerGroupOffsets(consumerGroup).partitionsToOffsetAndMetadata().get();
-            assignment.forEach(topicPartition -> {
+            collection.forEach(topicPartition -> {
                 if (partitionToGroupOffset.containsKey(topicPartition)) {
                     // there is a starting position for this partition
                     long offset = partitionToGroupOffset.get(topicPartition).offset();
