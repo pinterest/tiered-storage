@@ -58,7 +58,7 @@ public class S3Consumer<K, V> {
                     s3FinalizedEndpoint.getPrefixExcludingTopicPartitionUri(),
                     topicPartition);
         });
-        LOG.info("Assigned partitions to S3 consumer: " + assignment);
+        LOG.debug("Assigned partitions to S3 consumer: " + assignment);
     }
 
     /**

@@ -421,6 +421,7 @@ public class S3PartitionConsumer<K, V> {
      * @param location
      */
     public void update(String location) {
-        this.location = location;
+        if (!this.location.equals(location))
+            this.location = location;
     }
 }

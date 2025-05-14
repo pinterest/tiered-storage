@@ -6,6 +6,7 @@ import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.clients.consumer.OffsetOutOfRangeException;
 import org.apache.kafka.clients.consumer.OffsetResetStrategy;
 import org.apache.kafka.common.TopicPartition;
@@ -36,7 +37,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
 
 import static com.pinterest.kafka.tieredstorage.common.CommonTestUtils.writeExpectedRecordFormatTestData;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -656,9 +656,10 @@ public class TestTieredStorageConsumerIntegration extends TestS3Base {
         putEmptyObjects(TEST_CLUSTER, TEST_TOPIC_A, 1, 150, 2000, 100);
         putEmptyObjects(TEST_CLUSTER, TEST_TOPIC_A, 2, 200, 2000, 100);
 
-        writeExpectedRecordFormatTestData(CommonTestUtils.RecordContentType.KAFKA, sharedKafkaTestResource, TEST_TOPIC_A, 0, 5000);
-        writeExpectedRecordFormatTestData(CommonTestUtils.RecordContentType.KAFKA, sharedKafkaTestResource, TEST_TOPIC_A, 1, 5000);
-        writeExpectedRecordFormatTestData(CommonTestUtils.RecordContentType.KAFKA, sharedKafkaTestResource, TEST_TOPIC_A, 2, 5000);
+        // broker offsets should be cleaned up automatically by log cleaner
+        writeExpectedRecordFormatTestData(CommonTestUtils.RecordContentType.KAFKA, sharedKafkaTestResource, TEST_TOPIC_A, 0, 8000);
+        writeExpectedRecordFormatTestData(CommonTestUtils.RecordContentType.KAFKA, sharedKafkaTestResource, TEST_TOPIC_A, 1, 8000);
+        writeExpectedRecordFormatTestData(CommonTestUtils.RecordContentType.KAFKA, sharedKafkaTestResource, TEST_TOPIC_A, 2, 8000);
 
         TopicPartition tp0 = new TopicPartition(TEST_TOPIC_A, 0);
         TopicPartition tp1 = new TopicPartition(TEST_TOPIC_A, 1);
@@ -694,9 +695,16 @@ public class TestTieredStorageConsumerIntegration extends TestS3Base {
         TopicPartition tp2 = new TopicPartition(TEST_TOPIC_A, 2);
         Map<TopicPartition, Long> beginningOffsets = tsConsumer.beginningOffsets(Arrays.asList(tp0, tp1, tp2));
 
-        assertEquals(0, beginningOffsets.get(tp0));
-        assertEquals(0, beginningOffsets.get(tp1));
-        assertEquals(0, beginningOffsets.get(tp2));
+        if (mode == TieredStorageConsumer.TieredStorageMode.TIERED_STORAGE_ONLY) {
+            assertEquals(100, beginningOffsets.get(tp0));
+            assertEquals(200, beginningOffsets.get(tp1));
+            assertEquals(300, beginningOffsets.get(tp2));
+        } else {
+            // KAFKA_ONLY and KAFKA_PREFERRED
+            assertEquals(0, beginningOffsets.get(tp0));
+            assertEquals(0, beginningOffsets.get(tp1));
+            assertEquals(0, beginningOffsets.get(tp2));
+        }
 
         tsConsumer.close();
     }
@@ -767,24 +775,202 @@ public class TestTieredStorageConsumerIntegration extends TestS3Base {
         tsConsumer.close();
     }
 
-//    @Test
+    @ParameterizedTest
+    @EnumSource(TieredStorageConsumer.TieredStorageMode.class)
+    void testCommitSyncSingleTopicSubscribeTieredStorage(TieredStorageConsumer.TieredStorageMode mode) throws IOException, ClassNotFoundException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException, InterruptedException {
+        if (mode == TieredStorageConsumer.TieredStorageMode.KAFKA_ONLY) {
+            LOG.info("Skipping testCommitSyncSingleTopicSubscribeTieredStorage for KAFKA_ONLY mode");
+            return;
+        }
+
+        prepareS3Mocks();
+
+        Properties props = getStandardTieredStorageConsumerProperties(mode, sharedKafkaTestResource.getKafkaConnectString());
+        props.setProperty(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
+        props.setProperty(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, "10");
+        tsConsumer = new TieredStorageConsumer<>(props);
+        tsConsumer.subscribe(Collections.singleton(TEST_TOPIC_A));
+
+        TopicPartition tta0 = new TopicPartition(TEST_TOPIC_A, 0);
+        TopicPartition tta1 = new TopicPartition(TEST_TOPIC_A, 1);
+        TopicPartition tta2 = new TopicPartition(TEST_TOPIC_A, 2);
+
+        putObjects(TEST_CLUSTER, TEST_TOPIC_A, 0, "src/test/resources/log-files/test_topic_a-0");
+        putObjects(TEST_CLUSTER, TEST_TOPIC_A, 1, "src/test/resources/log-files/test_topic_a-1");
+        putObjects(TEST_CLUSTER, TEST_TOPIC_A, 2, "src/test/resources/log-files/test_topic_a-2");
+
+        int[] consumedByPartition = new int[3];
+        int totalConsumed = 0;
+        int totalRecords = TEST_TOPIC_A_P0_NUM_RECORDS + TEST_TOPIC_A_P1_NUM_RECORDS + TEST_TOPIC_A_P2_NUM_RECORDS;
+
+        while (totalConsumed < totalRecords / 3) {
+            ConsumerRecords<String, String> records = tsConsumer.poll(Duration.ofMillis(100));
+            for (ConsumerRecord<String, String> record : records) {
+                consumedByPartition[record.partition()]++;
+                totalConsumed++;
+            }
+            tsConsumer.commitSync();
+            assertEquals(consumedByPartition[0], tsConsumer.committed(tta0).offset());
+            assertEquals(consumedByPartition[1], tsConsumer.committed(tta1).offset());
+            assertEquals(consumedByPartition[2], tsConsumer.committed(tta2).offset());
+        }
+        long tta0Committed = tsConsumer.committed(tta0).offset();
+        long tta1Committed = tsConsumer.committed(tta1).offset();
+        long tta2Committed = tsConsumer.committed(tta2).offset();
+        long[] committedByPartition = new long[]{tta0Committed, tta1Committed, tta2Committed};
+
+        assertEquals(consumedByPartition[0], tta0Committed);
+        assertEquals(consumedByPartition[1], tta1Committed);
+        assertEquals(consumedByPartition[2], tta2Committed);
+
+        tsConsumer.close();     // simulate close and restart from committed offsets
+
+        tsConsumer = getTieredStorageConsumer(mode);
+        tsConsumer.subscribe(Collections.singleton(TEST_TOPIC_A));
+
+        boolean[] partitionRecordReceived = new boolean[3];
+        while (totalConsumed < totalRecords) {
+            ConsumerRecords<String, String> records = tsConsumer.poll(Duration.ofMillis(100));
+            for (ConsumerRecord<String, String> record: records) {
+                if (!partitionRecordReceived[record.partition()]) {
+                    partitionRecordReceived[record.partition()] = true;
+                    assertEquals(committedByPartition[record.partition()], record.offset());
+                }
+                consumedByPartition[record.partition()]++;
+                totalConsumed++;
+            }
+            tsConsumer.commitSync();
+            assertEquals(consumedByPartition[0], tsConsumer.committed(tta0).offset());
+            assertEquals(consumedByPartition[1], tsConsumer.committed(tta1).offset());
+            assertEquals(consumedByPartition[2], tsConsumer.committed(tta2).offset());
+        }
+
+        assertNoMoreRecords(Duration.ofSeconds(5));
+        Map<TopicPartition, OffsetAndMetadata> committed = tsConsumer.committed(new HashSet<>(Arrays.asList(tta0, tta1, tta2)));
+        for (TopicPartition tp : committed.keySet()) {
+            assertEquals(consumedByPartition[tp.partition()], committed.get(tp).offset());
+        }
+
+        tsConsumer.close();
+        closeS3Mocks();
+    }
+
+    @ParameterizedTest
+    @EnumSource(TieredStorageConsumer.TieredStorageMode.class)
+    void testCommitSyncSingleTopicSubscribeKafka(TieredStorageConsumer.TieredStorageMode mode) throws IOException, ClassNotFoundException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
+        if (mode == TieredStorageConsumer.TieredStorageMode.TIERED_STORAGE_ONLY) {
+            LOG.info("Skipping testCommitSyncSingleTopicSubscribeKafka for TIERED_STORAGE_ONLY mode");
+            return;
+        }
+        String groupId = "test-consumer-group-" + mode.toString().toLowerCase();
+        Properties props = getStandardTieredStorageConsumerProperties(mode, sharedKafkaTestResource.getKafkaConnectString());
+        props.setProperty(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
+        props.setProperty(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, "10");
+        props.setProperty(ConsumerConfig.GROUP_ID_CONFIG, groupId);
+        tsConsumer = new TieredStorageConsumer<>(props);
+        tsConsumer.subscribe(Collections.singleton(TEST_TOPIC_A));
+
+        TopicPartition tta0 = new TopicPartition(TEST_TOPIC_A, 0);
+        TopicPartition tta1 = new TopicPartition(TEST_TOPIC_A, 1);
+        TopicPartition tta2 = new TopicPartition(TEST_TOPIC_A, 2);
+
+        sendTestData(TEST_TOPIC_A, 0, 100);
+        sendTestData(TEST_TOPIC_A, 1, 100);
+        sendTestData(TEST_TOPIC_A, 2, 100);
+
+        int[] consumedByPartition = new int[3];
+        int totalConsumed = 0;
+        int totalRecords = 300;
+
+        while (totalConsumed < totalRecords / 3) {
+            ConsumerRecords<String, String> records = tsConsumer.poll(Duration.ofMillis(100));
+            for (ConsumerRecord<String, String> record : records) {
+                consumedByPartition[record.partition()]++;
+                totalConsumed++;
+            }
+            if (records.count() > 0) {
+                tsConsumer.commitSync();
+                assertEquals(consumedByPartition[0], tsConsumer.committed(tta0).offset());
+                assertEquals(consumedByPartition[1], tsConsumer.committed(tta1).offset());
+                assertEquals(consumedByPartition[2], tsConsumer.committed(tta2).offset());
+            }
+        }
+
+        long tta0Committed = tsConsumer.committed(tta0).offset();
+        long tta1Committed = tsConsumer.committed(tta1).offset();
+        long tta2Committed = tsConsumer.committed(tta2).offset();
+        long[] committedByPartition = new long[]{tta0Committed, tta1Committed, tta2Committed};
+
+        assertEquals(consumedByPartition[0], tta0Committed);
+        assertEquals(consumedByPartition[1], tta1Committed);
+        assertEquals(consumedByPartition[2], tta2Committed);
+
+        tsConsumer.close();     // simulate close and restart from committed offsets
+
+        tsConsumer = new TieredStorageConsumer<>(props);
+        tsConsumer.subscribe(Collections.singleton(TEST_TOPIC_A));
+
+        boolean[] partitionRecordReceived = new boolean[3];
+        while (totalConsumed < totalRecords) {
+            ConsumerRecords<String, String> records = tsConsumer.poll(Duration.ofMillis(100));
+            for (ConsumerRecord<String, String> record: records) {
+                if (!partitionRecordReceived[record.partition()]) {
+                    partitionRecordReceived[record.partition()] = true;
+                    assertEquals(committedByPartition[record.partition()], record.offset());
+                }
+                consumedByPartition[record.partition()]++;
+                totalConsumed++;
+            }
+            tsConsumer.commitSync();
+            assertEquals(consumedByPartition[0], tsConsumer.committed(tta0).offset());
+            assertEquals(consumedByPartition[1], tsConsumer.committed(tta1).offset());
+            assertEquals(consumedByPartition[2], tsConsumer.committed(tta2).offset());
+        }
+
+        assertNoMoreRecords(Duration.ofSeconds(5));
+        Map<TopicPartition, OffsetAndMetadata> committed = tsConsumer.committed(new HashSet<>(Arrays.asList(tta0, tta1, tta2)));
+        for (TopicPartition tp : committed.keySet()) {
+            assertEquals(consumedByPartition[tp.partition()], committed.get(tp).offset());
+        }
+    }
+
     void test() {
         Properties props = new Properties();
         props.setProperty(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, sharedKafkaTestResource.getKafkaConnectString());
         props.setProperty(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
         props.setProperty(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
-        props.setProperty(ConsumerConfig.GROUP_ID_CONFIG, "test-consumer-group");
+        props.setProperty(ConsumerConfig.GROUP_ID_CONFIG, "test-consumer-group-1");
+        props.setProperty(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, "10");
+        props.setProperty(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
+        props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
         KafkaConsumer<String, String> kafkaConsumer = new KafkaConsumer<>(props);
         sendTestData(TEST_TOPIC_A, 0, 100);
         sendTestData(TEST_TOPIC_A, 1, 100);
         sendTestData(TEST_TOPIC_A, 2, 100);
-        TopicPartition tp = new TopicPartition(TEST_TOPIC_A, 0);
+        TopicPartition tpa0 = new TopicPartition(TEST_TOPIC_A, 0);
+        TopicPartition tpa1 = new TopicPartition(TEST_TOPIC_A, 1);
+        TopicPartition tpa2 = new TopicPartition(TEST_TOPIC_A, 2);
         kafkaConsumer.subscribe(Collections.singleton(TEST_TOPIC_A));
-        while (kafkaConsumer.assignment().isEmpty()) {
-            System.out.println("assignment before poll: " + kafkaConsumer.assignment());
-            kafkaConsumer.poll(Duration.ofMillis(100));
-            System.out.println("assignment after poll: " + kafkaConsumer.assignment());
+        int[] consumedByPartition = new int[3];
+        int totalConsumed = 0;
+        while (totalConsumed < 300) {
+            ConsumerRecords<String, String> records = kafkaConsumer.poll(Duration.ofMillis(100));
+//            while (kafkaConsumer.assignment().isEmpty()) {
+//                kafkaConsumer.poll(Duration.ofMillis(100));
+//            }
+//            kafkaConsumer.commitSync();
+            for (ConsumerRecord<String, String> record : records) {
+                consumedByPartition[record.partition()]++;
+                totalConsumed++;
+            }
+            kafkaConsumer.commitSync();
+            System.out.println("consumedByPartition[0]: " + consumedByPartition[0]);
+            System.out.println("consumedByPartition[1]: " + consumedByPartition[1]);
+            System.out.println("consumedByPartition[2]: " + consumedByPartition[2]);
+            System.out.println("committed offsets: " + kafkaConsumer.committed(kafkaConsumer.assignment()));
         }
+
+        kafkaConsumer.close();
     }
 
     private void assertNoMoreRecords(Duration checkTime) {
@@ -797,6 +983,11 @@ public class TestTieredStorageConsumerIntegration extends TestS3Base {
     private static TieredStorageConsumer<String, String> getTieredStorageConsumer(TieredStorageConsumer.TieredStorageMode mode) throws IOException, ClassNotFoundException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
         String bootstrapServers = sharedKafkaTestResource.getKafkaConnectString();
 
+        Properties properties = getStandardTieredStorageConsumerProperties(mode, bootstrapServers);
+        return new TieredStorageConsumer<>(properties);
+    }
+
+    private static Properties getStandardTieredStorageConsumerProperties(TieredStorageConsumer.TieredStorageMode mode, String bootstrapServers) {
         Properties properties = new Properties();
         properties.setProperty(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
         properties.setProperty(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
@@ -811,6 +1002,6 @@ public class TestTieredStorageConsumerIntegration extends TestS3Base {
         properties.setProperty(TieredStorageConsumerConfig.OFFSET_RESET_CONFIG, TieredStorageConsumer.OffsetReset.EARLIEST.toString());
         properties.setProperty(TieredStorageConsumerConfig.STORAGE_SERVICE_ENDPOINT_PROVIDER_CLASS_CONFIG, MockS3StorageServiceEndpointProvider.class.getName());
         properties.setProperty(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
-        return new TieredStorageConsumer<>(properties);
+        return properties;
     }
 }

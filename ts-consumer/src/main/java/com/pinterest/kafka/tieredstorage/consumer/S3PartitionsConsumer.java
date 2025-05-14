@@ -75,10 +75,10 @@ public class S3PartitionsConsumer<K, V> {
                     topicPartition,
                     new S3PartitionConsumer<>(location, topicPartition, consumerGroup, properties, metricsConfiguration, keyDeserializer, valueDeserializer)
             );
-            LOG.info(String.format("Added %s for S3 consumption.", topicPartition));
+            LOG.debug(String.format("Added %s for topic-partition %s for S3 consumption.", location, topicPartition));
         } else {
             s3PartitionConsumerMap.get(topicPartition).update(location);
-            LOG.info(String.format("Updated %s for S3 consumption.", topicPartition));
+            LOG.debug(String.format("Updated %s for topic-partition %s for S3 consumption.", location, topicPartition));
         }
     }
 
@@ -98,14 +98,14 @@ public class S3PartitionsConsumer<K, V> {
             return tieredStorageRecords.records();
         }
         while (round < partitions.size()) {
-            LOG.info(String.format("Current stored positions: %s", positions));
+            LOG.debug(String.format("Current stored positions: %s", positions));
             TopicPartition topicPartition = topicPartitions.get(nextPartitionIndex(partitions));
             if (!partitions.contains(topicPartition)) {
-                LOG.info(String.format("Skipping topic partition %s as it is not in the list of partitions to consume.", topicPartition));
+                LOG.debug(String.format("Skipping topic partition %s as it is not in the list of partitions to consume.", topicPartition));
                 continue;
             }
             if (pausedPartitions.contains(topicPartition)) {
-                LOG.info(String.format("Fetching from topic partition %s is paused.", topicPartition));
+                LOG.debug(String.format("Fetching from topic partition %s is paused.", topicPartition));
                 continue;
             }
             LOG.debug(String.format("S3PartitionsConsumer Consumption round %s: partition: %s", round, topicPartition));
@@ -128,7 +128,7 @@ public class S3PartitionsConsumer<K, V> {
                 positions.computeIfPresent(tp, (k, v) -> pos);
             });
         }
-        LOG.info("positions: " + positions);
+        LOG.debug("positions: " + positions);
         return tieredStorageRecords.records();
     }
 

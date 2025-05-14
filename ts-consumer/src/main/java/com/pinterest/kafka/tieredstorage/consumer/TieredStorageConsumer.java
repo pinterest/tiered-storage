@@ -71,7 +71,6 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
     private final Map<TopicPartition, Long> positions = new HashMap<>();
     private AssignmentAwareConsumerRebalanceListener rebalanceListener;
     private final TieredStorageRecords<K, V> records = new TieredStorageRecords<>();
-    private final Set<TopicPartition> tieredStoragePartitions = new HashSet<>();
     private final MetricsConfiguration metricsConfiguration;
     private int s3PrefixEntropyNumBits = -1;
     private String consumerGroup;
@@ -315,13 +314,15 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
         AtomicBoolean ts = new AtomicBoolean(false);
         // consumed count must be 0 at this point
         if (tieredStorageConsumptionPossible()) {
-            maybeWaitForPartitionAssignment(timeout);
-            if (tieredStorageMode == TieredStorageMode.KAFKA_PREFERRED) {
+            ConsumerRecords<K, V> recordsAfterPartitionAssignment = maybeWaitForPartitionAssignment(timeout);
+            if (!recordsAfterPartitionAssignment.isEmpty()) {
+                // if we have records after partition assignment, we can return them
+                records = recordsAfterPartitionAssignment;
+            } else if (tieredStorageMode == TieredStorageMode.KAFKA_PREFERRED) {
                 records = handleTieredStoragePoll(timeout, ts);
             } else if (tieredStorageMode == TieredStorageMode.TIERED_STORAGE_ONLY) {
                 records = handleTieredStorageOnlyPoll(timeout, ts);
             } else {
-                tieredStoragePartitions.clear();
                 this.records.clear();
                 LOG.warn("TieredStorageMode " + tieredStorageMode + " is not supported at the moment");
                 records = this.records.records();   // return empty records for now
@@ -363,11 +364,14 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
         return records;
     }
 
-    private void maybeWaitForPartitionAssignment(Duration timeout) {
+    private ConsumerRecords<K, V> maybeWaitForPartitionAssignment(Duration timeout) {
         while (kafkaConsumer.assignment().isEmpty()) {
             LOG.info("Waiting for partition assignment to complete...");
             try {
-                kafkaConsumer.poll(timeout);
+                ConsumerRecords<K, V> records = kafkaConsumer.poll(timeout);
+                if (!records.isEmpty()) {
+                    return records;
+                }
             } catch (NoOffsetForPartitionException | OffsetOutOfRangeException e) {
                 // this is expected if tieredStorageConsumption is enabled and no offsets are available (auto.offset.reset=none)
                 continue;
@@ -378,6 +382,7 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
                 throw new RuntimeException(e);
             }
         }
+        return ConsumerRecords.empty();
     }
 
     @Override
@@ -393,7 +398,6 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
      */
     private ConsumerRecords<K, V> handleTieredStorageOnlyPoll(Duration timeout, AtomicBoolean ts) {
         records.clear();
-        tieredStoragePartitions.clear();
         s3Consumer.assign(kafkaConsumer.assignment());
         s3Consumer.setPositions(positions);
         records.addRecords(s3Consumer.poll(maxRecordsPerPoll, kafkaConsumer.assignment()));
@@ -412,14 +416,13 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
      */
     private ConsumerRecords<K, V> handleTieredStoragePoll(Duration timeout, AtomicBoolean ts) {
         records.clear();
-        tieredStoragePartitions.clear();
         try {
             records.addRecords(kafkaConsumer.poll(timeout));
             ts.set(false);
         } catch (InvalidOffsetException e) {
             // If this is a NoOffsetForPartitionException, it means no Kafka offsets exist for some partitions
             // If this is an OffsetOutOfRangeException, it means that the offsets are out of range in Kafka.
-            LOG.info("InvalidOffsetException: " + e.getClass().getName() + " for partitions: " + e.partitions());
+            LOG.debug("InvalidOffsetException: " + e.getClass().getName() + " for partitions: " + e.partitions());
             handleInvalidOffsetException(ts, e);
         } finally {
             if (autoCommitEnabled) {
@@ -449,7 +452,6 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
                 LOG.debug(String.format("%s: InvalidOffsetException on Kafka: Going to reset offsets to positions for S3 consumption: %s.",
                         offsetReset, positions));
                 records.addRecords(s3Consumer.poll(maxRecordsPerPoll, exception.partitions()));
-                tieredStoragePartitions.addAll(exception.partitions());
                 ts.set(true);
                 break;
         }
@@ -460,58 +462,37 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
      */
     @Override
     public void commitSync() {
-        if (tieredStoragePartitions.isEmpty())
-            kafkaConsumer.commitSync();
-        else
-            KafkaConsumerUtils.commitSync(kafkaConsumer, KafkaConsumerUtils.getOffsetsAndMetadata(positions), Duration.ofMillis(Long.MAX_VALUE));
+        KafkaConsumerUtils.commitSync(kafkaConsumer, KafkaConsumerUtils.getOffsetsAndMetadata(positions), Duration.ofMillis(Long.MAX_VALUE));
     }
 
     @Override
     public void commitSync(Duration timeout) {
-        if (tieredStoragePartitions.isEmpty())
-            kafkaConsumer.commitSync(timeout);
-        else
-            KafkaConsumerUtils.commitSync(kafkaConsumer, KafkaConsumerUtils.getOffsetsAndMetadata(positions), timeout);
+        KafkaConsumerUtils.commitSync(kafkaConsumer, KafkaConsumerUtils.getOffsetsAndMetadata(positions), timeout);
     }
 
     @Override
     public void commitSync(Map<TopicPartition, OffsetAndMetadata> offsets) {
-        if (tieredStoragePartitions.isEmpty())
-            kafkaConsumer.commitSync(offsets);
-        else
-            KafkaConsumerUtils.commitSync(kafkaConsumer, offsets, Duration.ofMillis(Long.MAX_VALUE));
+        KafkaConsumerUtils.commitSync(kafkaConsumer, offsets, Duration.ofMillis(Long.MAX_VALUE));
     }
 
     @Override
     public void commitSync(Map<TopicPartition, OffsetAndMetadata> offsets, Duration timeout) {
-        if (tieredStoragePartitions.isEmpty())
-            kafkaConsumer.commitSync(offsets, timeout);
-        else
-            KafkaConsumerUtils.commitSync(kafkaConsumer, offsets, timeout);
+        KafkaConsumerUtils.commitSync(kafkaConsumer, offsets, timeout);
     }
 
     @Override
     public void commitAsync() {
-        if (tieredStoragePartitions.isEmpty())
-            kafkaConsumer.commitAsync();
-        else
-            KafkaConsumerUtils.commitAsync(kafkaConsumer, KafkaConsumerUtils.getOffsetsAndMetadata(positions), null);
+        KafkaConsumerUtils.commitAsync(kafkaConsumer, KafkaConsumerUtils.getOffsetsAndMetadata(positions), null);
     }
 
     @Override
     public void commitAsync(OffsetCommitCallback callback) {
-        if (tieredStoragePartitions.isEmpty())
-            kafkaConsumer.commitAsync(callback);
-        else
-            KafkaConsumerUtils.commitAsync(kafkaConsumer, KafkaConsumerUtils.getOffsetsAndMetadata(positions), callback);
+        KafkaConsumerUtils.commitAsync(kafkaConsumer, KafkaConsumerUtils.getOffsetsAndMetadata(positions), callback);
     }
 
     @Override
     public void commitAsync(Map<TopicPartition, OffsetAndMetadata> offsets, OffsetCommitCallback callback) {
-        if (tieredStoragePartitions.isEmpty())
-            kafkaConsumer.commitAsync(offsets, callback);
-        else
-            KafkaConsumerUtils.commitAsync(kafkaConsumer, offsets, callback);
+        KafkaConsumerUtils.commitAsync(kafkaConsumer, offsets, callback);
     }
 
     @Override
@@ -533,24 +514,31 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
         Map<TopicPartition, Long> s3Offsets = null;
         Map<TopicPartition, Long> result = new HashMap<>();
         if (tieredStorageConsumptionPossible()) {
-            // if tiered storage consumption is possible, we want to see the s3 offsets as well
+            // if tiered storage consumption is possible, we want to see the TS offsets as well
             for (TopicPartition partition: partitions) {
                 setTieredStorageLocations(Collections.singleton(partition.topic()));
             }
             s3Consumer.assign(partitions);
             s3Offsets = s3Consumer.beginningOffsets(partitions);
+            LOG.info(String.format("S3 beginning offsets: %s", s3Offsets));
+            if (tieredStorageMode == TieredStorageMode.TIERED_STORAGE_ONLY) {
+                // only tiered storage consumption is enabled so TS beginning offsets is what we return
+                return s3Offsets;
+            }
         }
+        // if we haven't yet returned, we need to get the beginning offsets from Kafka
         Map<TopicPartition, Long> kafkaOffsets = kafkaConsumer.beginningOffsets(partitions, timeout);
         LOG.info(String.format("Kafka beginning offsets: %s", kafkaOffsets));
-        LOG.info(String.format("S3 beginning offsets: %s", s3Offsets));
-        if (s3Offsets == null) {
+        if (tieredStorageMode == TieredStorageMode.KAFKA_ONLY) {
+            // only kafka consumption is enabled so kafka beginning offsets is what we return
             return kafkaOffsets;
+        } else {
+            // we are in KAFKA_PREFERRED mode, get earliest for either kafka or s3 depending on which is earlier
+            s3Offsets.forEach((topicPartition, s3Offset) -> {
+                Long kafkaOffset = kafkaOffsets.get(topicPartition);
+                result.put(topicPartition, Math.min(kafkaOffset, s3Offset));
+            });
         }
-        // get earliest for either kafka or s3
-        s3Offsets.forEach((topicPartition, s3Offset) -> {
-            Long kafkaOffset = kafkaOffsets.get(topicPartition);
-            result.put(topicPartition, Math.min(kafkaOffset, s3Offset));
-        });
         return result;
     }
 
