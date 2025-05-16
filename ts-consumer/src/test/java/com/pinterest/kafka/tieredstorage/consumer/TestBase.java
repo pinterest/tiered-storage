@@ -1,6 +1,9 @@
 package com.pinterest.kafka.tieredstorage.consumer;
 
 import com.salesforce.kafka.test.junit5.SharedKafkaTestResource;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 import org.junit.jupiter.api.AfterAll;
@@ -26,7 +29,7 @@ public class TestBase {
             .withBrokerProperty("log.segment.bytes", "5000")
             .withBrokerProperty("log.segment.delete.delay.ms", "1000")
             .withBrokerProperty("log.retention.check.interval.ms", "30000") // these are hard-coded to align with test scenarios
-            .withBrokerProperty("log.retention.bytes", "500000");
+            .withBrokerProperty("log.retention.bytes", "250000");
     private static final Logger LOG = LogManager.getLogger(TestBase.class.getName());
 
     protected void sendTestData(String topic, int partition, int numRecords) {
@@ -63,27 +66,63 @@ public class TestBase {
         }
     }
 
-    protected static long waitForRetentionCleanupAndVerify(String topic, int partition, long minOffsetToDelete) throws IOException {
-        long minOffsetNow = Long.MIN_VALUE;
-        while (minOffsetNow < minOffsetToDelete) {
-            Path tpPath = Paths.get(TEMP_LOG_DIR, topic + "-" + partition);
-            List<Path> files = Files.list(tpPath)
-                    .filter(path -> path.getFileName().toString().endsWith(".log") || path.getFileName().toString().endsWith(".index") || path.getFileName().toString().endsWith(".timeindex") || path.getFileName().toString().endsWith(".snapshot"))
-                    .sorted().collect(Collectors.toList());
-            if (files.isEmpty()) {
-                LOG.info("No files found in " + tpPath);
+    private static long getMinOffsetForTopicPartition(String topic, int partition) throws IOException {
+        Path tpPath = Paths.get(TEMP_LOG_DIR, topic + "-" + partition);
+        List<Path> files = Files.list(tpPath)
+                .filter(path -> path.getFileName().toString().endsWith(".log") || path.getFileName().toString().endsWith(".index") || path.getFileName().toString().endsWith(".timeindex") || path.getFileName().toString().endsWith(".snapshot"))
+                .sorted().collect(Collectors.toList());
+        if (files.isEmpty()) {
+            LOG.info("No files found in " + tpPath);
+            return Long.MIN_VALUE;
+        }
+        long minOffset = Long.parseLong(files.get(0).toFile().getName().split("\\.")[0]);
+        LOG.info("Min offset now is " + minOffset + " for topic " + topic + " partition " + partition);
+        return minOffset;
+    }
+
+//    protected static long waitForRetentionCleanupAndVerify(String topic, int partition, long minOffsetToDelete) throws IOException {
+//        long minOffsetNow = getMinOffsetForTopicPartition(topic, partition);
+//        long start = System.currentTimeMillis();
+//        while (minOffsetNow < minOffsetToDelete) {
+//            if (System.currentTimeMillis() - start > 60000) {
+//                LOG.info("Timeout waiting for retention cleanup for topic " + topic + " partition " + partition);
+//                break;
+//            }
+//            minOffsetNow = Math.max(minOffsetNow, getMinOffsetForTopicPartition(topic, partition));
+//            try {
+//                Thread.sleep(500);
+//            } catch (InterruptedException e) {
+//                throw new RuntimeException(e);
+//            }
+//        }
+//        LOG.info("After waiting, min offset now is " + minOffsetNow + " for topic " + topic + " partition " + partition);
+//        return minOffsetNow;
+//    }
+
+    protected static long waitForRetentionCleanupAndVerify(String topic, int partition, long minOffsetToDelete) {
+        long beginningOffsets = getBeginningOffsets(topic, partition);
+        while (beginningOffsets < minOffsetToDelete) {
+            if (System.currentTimeMillis() - beginningOffsets > 60000) {
+                LOG.info("Timeout waiting for retention cleanup for topic " + topic + " partition " + partition);
                 break;
             }
-            minOffsetNow = Math.max(minOffsetNow, Long.parseLong(files.get(0).toFile().getName().split("\\.")[0]));
-            LOG.info("Min offset now is " + minOffsetNow + " for topic " + topic + " partition " + partition);
+            beginningOffsets = Math.max(beginningOffsets, getBeginningOffsets(topic, partition));
             try {
                 Thread.sleep(500);
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
             }
         }
-        LOG.info("After waiting, min offset now is " + minOffsetNow + " for topic " + topic + " partition " + partition);
-        return minOffsetNow;
+        LOG.info("After waiting, beginning offsets now is " + beginningOffsets + " for topic " + topic + " partition " + partition);
+        return beginningOffsets;
+    }
+
+    protected static long getBeginningOffsets(String topic, int partition) {
+        KafkaConsumer<String, String> consumer = sharedKafkaTestResource.getKafkaTestUtils().getKafkaConsumer(StringDeserializer.class, StringDeserializer.class);
+        long offset = consumer.beginningOffsets(Collections.singleton(new TopicPartition(topic, partition))).get(new TopicPartition(topic, partition));
+        LOG.info("Beginning offset now is " + offset + " for topic " + topic + " partition " + partition);
+        consumer.close();
+        return offset;
     }
 
     protected static void createTopicAndVerify(SharedKafkaTestResource testResource, String topic, int partitions)

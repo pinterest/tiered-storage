@@ -78,8 +78,8 @@ public class CommonTestUtils {
         String expectedVal = expectedType == RecordContentType.KAFKA ? KAFKA_VAL_PREFIX + offset : VAL_PREFIX + offset;
         String expectedHeader1Val = expectedType == RecordContentType.KAFKA ? KAFKA_HEADER_1_VAL : HEADER1_VAL;
         String expectedHeader2Val = expectedType == RecordContentType.KAFKA ? KAFKA_HEADER_2_VAL : HEADER2_VAL;
-        assertEquals(expectedKey, record.key());
-        assertEquals(expectedVal, record.value());
+        assertEquals(expectedKey, record.key(), String.format("Key mismatch for record: topic=%s, partition=%s, offset=%s", record.topic(), record.partition(), record.offset()));
+        assertEquals(expectedVal, record.value(), String.format("Value mismatch for record: topic=%s, partition=%s, offset=%s", record.topic(), record.partition(), record.offset()));
         assertEquals(HEADER1_KEY, record.headers().headers(HEADER1_KEY).iterator().next().key());
         assertEquals(HEADER2_KEY, record.headers().headers(HEADER2_KEY).iterator().next().key());
         assertEquals(expectedHeader1Val, new String(record.headers().headers(HEADER1_KEY).iterator().next().value()));

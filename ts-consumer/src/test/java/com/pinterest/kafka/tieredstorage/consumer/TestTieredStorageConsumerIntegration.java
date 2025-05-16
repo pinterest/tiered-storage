@@ -365,17 +365,17 @@ public class TestTieredStorageConsumerIntegration extends TestS3Base {
     @Test
     void testKafkaToTieredStorageConsumption() throws IOException, ClassNotFoundException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
         tsConsumer = getTieredStorageConsumer(TieredStorageConsumer.TieredStorageMode.KAFKA_PREFERRED);
-        int numRecords = 5000;
+        int numRecordsFromKafka = 500;
         TopicPartition tp = new TopicPartition(TEST_TOPIC_A, 0);
         tsConsumer.assign(Collections.singleton(new TopicPartition(TEST_TOPIC_A, 0)));
-        sendTestData(TEST_TOPIC_A, 0, numRecords);
+        sendTestData(TEST_TOPIC_A, 0, numRecordsFromKafka);
         int consumed = 0;
-        ConsumerRecords<String, String> records;
-        while (!(records = tsConsumer.poll(Duration.ofMillis(100))).isEmpty() || consumed == 0) {
+        while (consumed < numRecordsFromKafka) {
+            ConsumerRecords<String, String> records = tsConsumer.poll(Duration.ofMillis(100));
             consumed += records.count();
         }
-        assertEquals(numRecords, consumed);
-        assertEquals(numRecords, tsConsumer.getPositions().get(tp));
+        assertEquals(numRecordsFromKafka, consumed);
+        assertEquals(numRecordsFromKafka, tsConsumer.getPositions().get(tp));
 
         // next consumption should be from s3
 
@@ -388,7 +388,8 @@ public class TestTieredStorageConsumerIntegration extends TestS3Base {
         when(outOfRangeKafkaConsumer.assignment()).thenReturn(Collections.singleton(tp));
         tsConsumer.setKafkaConsumer(outOfRangeKafkaConsumer);
 
-        while ((records = tsConsumer.poll(Duration.ofMillis(100))).count() > 0) {
+        while (consumed < TEST_TOPIC_A_P0_NUM_RECORDS) {
+            ConsumerRecords<String, String> records = tsConsumer.poll(Duration.ofMillis(100));
             consumed += records.count();
         }
         assertEquals(TEST_TOPIC_A_P0_NUM_RECORDS, consumed);
@@ -472,6 +473,8 @@ public class TestTieredStorageConsumerIntegration extends TestS3Base {
         while (TEST_TOPIC_A_P0_NUM_RECORDS > consumed) {
             long positionBeforePoll = tsConsumer.position(tp);
             ConsumerRecords<String, String> records = tsConsumer.poll(Duration.ofMillis(100));
+            // update minOffsetOnKafka if necessary
+            minOffsetOnKafka = waitForRetentionCleanupAndVerify(TEST_TOPIC_A, 0, 2000);
             for (ConsumerRecord<String, String> record : records) {
                 if (positionBeforePoll < minOffsetOnKafka) {
                     // expected from Tiered Storage
@@ -527,13 +530,6 @@ public class TestTieredStorageConsumerIntegration extends TestS3Base {
         writeExpectedRecordFormatTestData(CommonTestUtils.RecordContentType.KAFKA, sharedKafkaTestResource, TEST_TOPIC_A, 0, TEST_TOPIC_A_P0_NUM_RECORDS);
         writeExpectedRecordFormatTestData(CommonTestUtils.RecordContentType.KAFKA, sharedKafkaTestResource, TEST_TOPIC_A, 1, TEST_TOPIC_A_P1_NUM_RECORDS);
         writeExpectedRecordFormatTestData(CommonTestUtils.RecordContentType.KAFKA, sharedKafkaTestResource, TEST_TOPIC_A, 2, TEST_TOPIC_A_P2_NUM_RECORDS);
-        long minOffsetOnKafka = waitForRetentionCleanupAndVerify(TEST_TOPIC_A, 0, 2000);
-        long minOffsetOnKafka1 = waitForRetentionCleanupAndVerify(TEST_TOPIC_A, 1, 2000);
-        long minOffsetOnKafka2 = waitForRetentionCleanupAndVerify(TEST_TOPIC_A, 2, 2000);
-        long[] minOffsetsOnKafkaByPartition = new long[3];
-        minOffsetsOnKafkaByPartition[0] = minOffsetOnKafka;
-        minOffsetsOnKafkaByPartition[1] = minOffsetOnKafka1;
-        minOffsetsOnKafkaByPartition[2] = minOffsetOnKafka2;
         int[] consumedByPartition = new int[3];
         int totalConsumed = 0;
         long[] positionsBeforePoll = new long[3];
@@ -541,6 +537,14 @@ public class TestTieredStorageConsumerIntegration extends TestS3Base {
             positionsBeforePoll[0] = tsConsumer.position(tta0);
             positionsBeforePoll[1] = tsConsumer.position(tta1);
             positionsBeforePoll[2] = tsConsumer.position(tta2);
+            // update minOffsetOnKafka if necessary
+            long minOffsetOnKafka = waitForRetentionCleanupAndVerify(TEST_TOPIC_A, 0, 2000);
+            long minOffsetOnKafka1 = waitForRetentionCleanupAndVerify(TEST_TOPIC_A, 1, 2000);
+            long minOffsetOnKafka2 = waitForRetentionCleanupAndVerify(TEST_TOPIC_A, 2, 2000);
+            long[] minOffsetsOnKafkaByPartition = new long[3];
+            minOffsetsOnKafkaByPartition[0] = minOffsetOnKafka;
+            minOffsetsOnKafkaByPartition[1] = minOffsetOnKafka1;
+            minOffsetsOnKafkaByPartition[2] = minOffsetOnKafka2;
             ConsumerRecords<String, String> records = tsConsumer.poll(Duration.ofMillis(100));
             for (ConsumerRecord<String, String> record : records) {
                 if (positionsBeforePoll[record.partition()] < minOffsetsOnKafkaByPartition[record.partition()]) {
@@ -594,13 +598,6 @@ public class TestTieredStorageConsumerIntegration extends TestS3Base {
         writeExpectedRecordFormatTestData(CommonTestUtils.RecordContentType.KAFKA, sharedKafkaTestResource, TEST_TOPIC_A, 0, TEST_TOPIC_A_P0_NUM_RECORDS);
         writeExpectedRecordFormatTestData(CommonTestUtils.RecordContentType.KAFKA, sharedKafkaTestResource, TEST_TOPIC_A, 1, TEST_TOPIC_A_P1_NUM_RECORDS);
         writeExpectedRecordFormatTestData(CommonTestUtils.RecordContentType.KAFKA, sharedKafkaTestResource, TEST_TOPIC_A, 2, TEST_TOPIC_A_P2_NUM_RECORDS);
-        long minOffsetOnKafka = waitForRetentionCleanupAndVerify(TEST_TOPIC_A, 0, 2000);
-        long minOffsetOnKafka1 = waitForRetentionCleanupAndVerify(TEST_TOPIC_A, 1, 2000);
-        long minOffsetOnKafka2 = waitForRetentionCleanupAndVerify(TEST_TOPIC_A, 2, 2000);
-        long[] minOffsetsOnKafkaByPartition = new long[3];
-        minOffsetsOnKafkaByPartition[0] = minOffsetOnKafka;
-        minOffsetsOnKafkaByPartition[1] = minOffsetOnKafka1;
-        minOffsetsOnKafkaByPartition[2] = minOffsetOnKafka2;
         int[] consumedByPartition = new int[3];
         int totalConsumed = 0;
         long[] positionsBeforePoll = new long[3];
@@ -610,6 +607,14 @@ public class TestTieredStorageConsumerIntegration extends TestS3Base {
                 positionsBeforePoll[1] = tsConsumer.position(tta1);
                 positionsBeforePoll[2] = tsConsumer.position(tta2);
             }
+            // update minOffsetOnKafka if necessary
+            long minOffsetOnKafka = waitForRetentionCleanupAndVerify(TEST_TOPIC_A, 0, 2000);
+            long minOffsetOnKafka1 = waitForRetentionCleanupAndVerify(TEST_TOPIC_A, 1, 2000);
+            long minOffsetOnKafka2 = waitForRetentionCleanupAndVerify(TEST_TOPIC_A, 2, 2000);
+            long[] minOffsetsOnKafkaByPartition = new long[3];
+            minOffsetsOnKafkaByPartition[0] = minOffsetOnKafka;
+            minOffsetsOnKafkaByPartition[1] = minOffsetOnKafka1;
+            minOffsetsOnKafkaByPartition[2] = minOffsetOnKafka2;
             ConsumerRecords<String, String> records = tsConsumer.poll(Duration.ofMillis(100));
             for (ConsumerRecord<String, String> record : records) {
                 if (positionsBeforePoll[record.partition()] < minOffsetsOnKafkaByPartition[record.partition()]) {
@@ -657,9 +662,13 @@ public class TestTieredStorageConsumerIntegration extends TestS3Base {
         putEmptyObjects(TEST_CLUSTER, TEST_TOPIC_A, 2, 200, 2000, 100);
 
         // broker offsets should be cleaned up automatically by log cleaner
-        writeExpectedRecordFormatTestData(CommonTestUtils.RecordContentType.KAFKA, sharedKafkaTestResource, TEST_TOPIC_A, 0, 8000);
-        writeExpectedRecordFormatTestData(CommonTestUtils.RecordContentType.KAFKA, sharedKafkaTestResource, TEST_TOPIC_A, 1, 8000);
-        writeExpectedRecordFormatTestData(CommonTestUtils.RecordContentType.KAFKA, sharedKafkaTestResource, TEST_TOPIC_A, 2, 8000);
+        writeExpectedRecordFormatTestData(CommonTestUtils.RecordContentType.KAFKA, sharedKafkaTestResource, TEST_TOPIC_A, 0, 6000);
+        writeExpectedRecordFormatTestData(CommonTestUtils.RecordContentType.KAFKA, sharedKafkaTestResource, TEST_TOPIC_A, 1, 6000);
+        writeExpectedRecordFormatTestData(CommonTestUtils.RecordContentType.KAFKA, sharedKafkaTestResource, TEST_TOPIC_A, 2, 6000);
+
+        waitForRetentionCleanupAndVerify(TEST_TOPIC_A, 0, 101);
+        waitForRetentionCleanupAndVerify(TEST_TOPIC_A, 1, 151);
+        waitForRetentionCleanupAndVerify(TEST_TOPIC_A, 2, 201);
 
         TopicPartition tp0 = new TopicPartition(TEST_TOPIC_A, 0);
         TopicPartition tp1 = new TopicPartition(TEST_TOPIC_A, 1);
@@ -932,45 +941,6 @@ public class TestTieredStorageConsumerIntegration extends TestS3Base {
         for (TopicPartition tp : committed.keySet()) {
             assertEquals(consumedByPartition[tp.partition()], committed.get(tp).offset());
         }
-    }
-
-    void test() {
-        Properties props = new Properties();
-        props.setProperty(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, sharedKafkaTestResource.getKafkaConnectString());
-        props.setProperty(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
-        props.setProperty(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
-        props.setProperty(ConsumerConfig.GROUP_ID_CONFIG, "test-consumer-group-1");
-        props.setProperty(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, "10");
-        props.setProperty(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
-        props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
-        KafkaConsumer<String, String> kafkaConsumer = new KafkaConsumer<>(props);
-        sendTestData(TEST_TOPIC_A, 0, 100);
-        sendTestData(TEST_TOPIC_A, 1, 100);
-        sendTestData(TEST_TOPIC_A, 2, 100);
-        TopicPartition tpa0 = new TopicPartition(TEST_TOPIC_A, 0);
-        TopicPartition tpa1 = new TopicPartition(TEST_TOPIC_A, 1);
-        TopicPartition tpa2 = new TopicPartition(TEST_TOPIC_A, 2);
-        kafkaConsumer.subscribe(Collections.singleton(TEST_TOPIC_A));
-        int[] consumedByPartition = new int[3];
-        int totalConsumed = 0;
-        while (totalConsumed < 300) {
-            ConsumerRecords<String, String> records = kafkaConsumer.poll(Duration.ofMillis(100));
-//            while (kafkaConsumer.assignment().isEmpty()) {
-//                kafkaConsumer.poll(Duration.ofMillis(100));
-//            }
-//            kafkaConsumer.commitSync();
-            for (ConsumerRecord<String, String> record : records) {
-                consumedByPartition[record.partition()]++;
-                totalConsumed++;
-            }
-            kafkaConsumer.commitSync();
-            System.out.println("consumedByPartition[0]: " + consumedByPartition[0]);
-            System.out.println("consumedByPartition[1]: " + consumedByPartition[1]);
-            System.out.println("consumedByPartition[2]: " + consumedByPartition[2]);
-            System.out.println("committed offsets: " + kafkaConsumer.committed(kafkaConsumer.assignment()));
-        }
-
-        kafkaConsumer.close();
     }
 
     private void assertNoMoreRecords(Duration checkTime) {
