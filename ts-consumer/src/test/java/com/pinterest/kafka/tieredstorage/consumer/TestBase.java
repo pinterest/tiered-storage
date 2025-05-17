@@ -29,7 +29,7 @@ public class TestBase {
             .withBrokerProperty("log.segment.bytes", "5000")
             .withBrokerProperty("log.segment.delete.delay.ms", "1000")
             .withBrokerProperty("log.retention.check.interval.ms", "30000") // these are hard-coded to align with test scenarios
-            .withBrokerProperty("log.retention.bytes", "250000");
+            .withBrokerProperty("log.retention.bytes", "100000");
     private static final Logger LOG = LogManager.getLogger(TestBase.class.getName());
 
     protected void sendTestData(String topic, int partition, int numRecords) {
@@ -79,25 +79,6 @@ public class TestBase {
         LOG.info("Min offset now is " + minOffset + " for topic " + topic + " partition " + partition);
         return minOffset;
     }
-
-//    protected static long waitForRetentionCleanupAndVerify(String topic, int partition, long minOffsetToDelete) throws IOException {
-//        long minOffsetNow = getMinOffsetForTopicPartition(topic, partition);
-//        long start = System.currentTimeMillis();
-//        while (minOffsetNow < minOffsetToDelete) {
-//            if (System.currentTimeMillis() - start > 60000) {
-//                LOG.info("Timeout waiting for retention cleanup for topic " + topic + " partition " + partition);
-//                break;
-//            }
-//            minOffsetNow = Math.max(minOffsetNow, getMinOffsetForTopicPartition(topic, partition));
-//            try {
-//                Thread.sleep(500);
-//            } catch (InterruptedException e) {
-//                throw new RuntimeException(e);
-//            }
-//        }
-//        LOG.info("After waiting, min offset now is " + minOffsetNow + " for topic " + topic + " partition " + partition);
-//        return minOffsetNow;
-//    }
 
     protected static long waitForRetentionCleanupAndVerify(String topic, int partition, long minOffsetToDelete) {
         long beginningOffsets = getBeginningOffsets(topic, partition);
