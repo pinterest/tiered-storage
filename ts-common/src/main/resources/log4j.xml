@@ -8,11 +8,6 @@
         </layout>
     </appender>
 
-    <logger name="com.pinterest.kafka.tieredstorage">
-        <level value="INFO"/>
-        <appender-ref ref="stdout"/>
-    </logger>
-
     <root>
         <level value="INFO"/>
         <appender-ref ref="stdout"/>

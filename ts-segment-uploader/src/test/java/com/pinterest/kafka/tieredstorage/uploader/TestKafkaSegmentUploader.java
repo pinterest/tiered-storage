@@ -1,16 +1,11 @@
 package com.pinterest.kafka.tieredstorage.uploader;
 
+import com.pinterest.kafka.tieredstorage.common.CommonTestUtils;
 import com.pinterest.kafka.tieredstorage.common.discovery.s3.S3StorageServiceEndpoint;
 import com.pinterest.kafka.tieredstorage.common.discovery.s3.S3StorageServiceEndpointProvider;
 import com.salesforce.kafka.test.junit5.SharedKafkaTestResource;
 import org.apache.kafka.clients.admin.AdminClient;
-import org.apache.kafka.clients.producer.KafkaProducer;
-import org.apache.kafka.clients.producer.ProducerConfig;
-import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.TopicPartition;
-import org.apache.kafka.common.header.internals.RecordHeader;
-import org.apache.kafka.common.header.internals.RecordHeaders;
-import org.apache.kafka.common.serialization.ByteArraySerializer;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -25,7 +20,6 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
-import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -186,28 +180,8 @@ public class TestKafkaSegmentUploader extends TestBase {
     @Test
     @Disabled
     void writeTestLogSegments() throws InterruptedException {
-        long now = System.currentTimeMillis();
-        long numRecordsSent = 0;
-        Properties props = new Properties();
-        props.setProperty(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, sharedKafkaTestResource.getKafkaConnectString());
-        props.setProperty(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class.getName());
-        props.setProperty(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class.getName());
-        KafkaProducer<byte[], byte[]> kafkaProducer = new KafkaProducer<>(props);
-        while (System.currentTimeMillis() - now < 10000) {
-            RecordHeaders recordHeaders = new RecordHeaders();
-            recordHeaders.add(new RecordHeader("header1", "header1-val".getBytes()));
-            recordHeaders.add(new RecordHeader("header2", "header2-val".getBytes()));
-            /*
-             * Record looks like:
-             * Headers: {header1=header1-val, header2=header2-val}
-             * Key: (int)
-             * Value: val-(int)
-             */
-            ProducerRecord<byte[], byte[]> producerRecord = new ProducerRecord<>(TEST_TOPIC_A, 0, String.valueOf(numRecordsSent).getBytes(), ("val-" + numRecordsSent).getBytes(), recordHeaders);
-            kafkaProducer.send(producerRecord);
-            numRecordsSent++;
-        }
-        Thread.sleep(30000);
+        CommonTestUtils.writeExpectedRecordFormatTestData(CommonTestUtils.RecordContentType.TIERED_STORAGE, sharedKafkaTestResource, TEST_TOPIC_A, 0, 15000);
+        Thread.sleep(30000);    // sleep for 30 seconds to allow the uploader to upload the segments
     }
 }
 

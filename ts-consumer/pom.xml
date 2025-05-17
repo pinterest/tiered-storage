@@ -5,7 +5,7 @@
     <parent>
         <artifactId>kafka-tiered-storage</artifactId>
         <groupId>com.pinterest.kafka.tieredstorage</groupId>
-        <version>1.0.0</version>
+        <version>1.0.1-SNAPSHOT</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
     <modelVersion>4.0.0</modelVersion>
@@ -22,6 +22,13 @@
             <groupId>com.pinterest.kafka.tieredstorage</groupId>
             <artifactId>ts-common</artifactId>
             <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.pinterest.kafka.tieredstorage</groupId>
+            <artifactId>ts-common</artifactId>
+            <version>${project.version}</version>
+            <classifier>tests</classifier>
+            <type>test-jar</type>
         </dependency>
         <dependency>
             <groupId>software.amazon.nio.s3</groupId>
@@ -76,7 +83,7 @@
         <dependency>
             <groupId>com.github.ben-manes.caffeine</groupId>
             <artifactId>caffeine</artifactId>
-            <version>3.1.5</version>
+            <version>2.9.3</version>
         </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
@@ -165,6 +172,7 @@
                 <configuration>
                     <!--suppress UnresolvedMavenProperty -->
                     <argLine>${argLine}</argLine>
+                    <threadCount>1</threadCount>
                 </configuration>
             </plugin>
         </plugins>
