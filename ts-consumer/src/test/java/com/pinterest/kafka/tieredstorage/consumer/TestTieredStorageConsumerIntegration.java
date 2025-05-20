@@ -72,8 +72,6 @@ public class TestTieredStorageConsumerIntegration extends TestS3Base {
         Thread.sleep(1000);
     }
 
-    // TODO: add seek and commit tests
-
     /**
      * Test that the consumer assigned to a single topic partition can consume records from Kafka only
      */

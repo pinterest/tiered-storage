@@ -69,7 +69,7 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
     private boolean autoCommitEnabled = true;
     private final TieredStorageMode tieredStorageMode;
     private final Map<TopicPartition, Long> positions = new HashMap<>();
-    private AssignmentAwareConsumerRebalanceListener rebalanceListener;
+    private final AssignmentAwareConsumerRebalanceListener rebalanceListener;
     private final TieredStorageRecords<K, V> records = new TieredStorageRecords<>();
     private final MetricsConfiguration metricsConfiguration;
     private int s3PrefixEntropyNumBits = -1;
@@ -87,40 +87,34 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
 
         this.metricsConfiguration = MetricsConfiguration.getMetricsConfiguration(properties);
 
+        String offsetResetConfig = properties.getProperty(TieredStorageConsumerConfig.OFFSET_RESET_CONFIG, "latest").toLowerCase().trim();
+        this.offsetReset = offsetResetConfig.equals("earliest") ? OffsetReset.EARLIEST :
+                offsetResetConfig.equals("none") ? OffsetReset.NONE :
+                        OffsetReset.LATEST;
+        LOG.info("Offset reset policy: " + this.offsetReset);
+        this.consumerGroup = properties.getProperty(ConsumerConfig.GROUP_ID_CONFIG);
         if (tieredStorageConsumptionPossible()) {
             LOG.info("Tiered storage consumption is possible. Consumption mode: " + tieredStorageMode);
             this.kafkaClusterId = properties.getProperty(TieredStorageConsumerConfig.KAFKA_CLUSTER_ID_CONFIG);
             properties.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "none");
-            String offsetResetConfig = properties.getProperty(TieredStorageConsumerConfig.OFFSET_RESET_CONFIG, "latest").toLowerCase().trim();
             this.s3PrefixEntropyNumBits = Integer.parseInt(properties.getProperty(
                     TieredStorageConsumerConfig.STORAGE_SERVICE_ENDPOINT_S3_PREFIX_ENTROPY_NUM_BITS_CONFIG, "-1"));
-            this.offsetReset = offsetResetConfig.equals("earliest") ? OffsetReset.EARLIEST :
-                    offsetResetConfig.equals("none") ? OffsetReset.NONE :
-                            OffsetReset.LATEST;
-            LOG.info("Offset reset policy: " + this.offsetReset);
             if (properties.containsKey(ConsumerConfig.MAX_POLL_RECORDS_CONFIG))
                 this.maxRecordsPerPoll = Integer.parseInt(properties.get(ConsumerConfig.MAX_POLL_RECORDS_CONFIG).toString());
             if (properties.containsKey(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG))
                 this.autoCommitEnabled = Boolean.parseBoolean(properties.get(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG).toString());
-            if (properties.containsKey(ConsumerConfig.GROUP_ID_CONFIG))
-                this.consumerGroup = properties.getProperty(ConsumerConfig.GROUP_ID_CONFIG);
-
-            this.consumerGroup = properties.getProperty(ConsumerConfig.GROUP_ID_CONFIG);
-            this.kafkaConsumer = new KafkaConsumer<>(properties, keyDeserializer, valueDeserializer);
             this.s3Consumer = new S3Consumer<>(consumerGroup, properties, metricsConfiguration, keyDeserializer, valueDeserializer);
-            Map<TopicPartition, Long> committed = new HashMap<>();
-            this.rebalanceListener = new AssignmentAwareConsumerRebalanceListener(
-                    kafkaConsumer, consumerGroup, properties, positions, committed, offsetReset
-            );
             if (properties.containsKey(TieredStorageConsumerConfig.STORAGE_SERVICE_ENDPOINT_PROVIDER_CLASS_CONFIG)) {
                 this.endpointProvider = getEndpointProvider(properties.getProperty(TieredStorageConsumerConfig.STORAGE_SERVICE_ENDPOINT_PROVIDER_CLASS_CONFIG));
             } else {
                 this.endpointProvider = getHardcodedS3EndpointProvider(properties);
             }
             this.endpointProvider.initialize(this.kafkaClusterId);
-        } else {
-            this.kafkaConsumer = new KafkaConsumer<>(properties);
         }
+        this.kafkaConsumer = new KafkaConsumer<>(properties, keyDeserializer, valueDeserializer);
+        this.rebalanceListener = new AssignmentAwareConsumerRebalanceListener(
+                kafkaConsumer, consumerGroup, properties, positions, new HashMap<>(), offsetReset
+        );
         LOG.info("TieredStorageConsumer configs: " + properties);
     }
 
@@ -281,15 +275,11 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
     public void assign(Collection<TopicPartition> topicPartitions) {
         subscription.clear();
         kafkaConsumer.assign(topicPartitions);
+        rebalanceListener.onPartitionsRevoked(kafkaConsumer.assignment());
+        rebalanceListener.onPartitionsAssigned(topicPartitions);
         if (tieredStorageConsumptionPossible()) {
-            rebalanceListener.onPartitionsRevoked(kafkaConsumer.assignment());
-            rebalanceListener.onPartitionsAssigned(topicPartitions);
             topicPartitions.forEach(tp -> setTieredStorageLocations(Collections.singleton(tp.topic())));
             s3Consumer.assign(kafkaConsumer.assignment());
-        } else {
-            for (TopicPartition topicPartition: topicPartitions) {
-                positions.put(topicPartition, kafkaConsumer.position(topicPartition));
-            }
         }
     }
 

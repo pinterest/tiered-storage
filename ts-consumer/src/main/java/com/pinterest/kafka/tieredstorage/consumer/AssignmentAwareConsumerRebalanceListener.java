@@ -127,32 +127,4 @@ public class AssignmentAwareConsumerRebalanceListener implements ConsumerRebalan
                 LOG.info(String.format("\t%s(s3): p(%s), c(%s)", topicPartition, 0, 0));
         }
     }
-
-    /**
-     * Reset the offset for the given topic partition
-     * @param topicPartition the topic partition to reset the offset for
-     * @param offset the offset to reset to
-     */
-    public void resetOffset(TopicPartition topicPartition, long offset) {
-        switch (offsetReset) {
-            case LATEST:
-                // consumption should start from the end of kafka log
-                long kafkaOffset = (long) kafkaConsumer.endOffsets(Collections.singleton(topicPartition)).get(topicPartition);
-                committed.put(topicPartition, kafkaOffset);
-                position.put(topicPartition, kafkaOffset);
-                LOG.info(String.format("\t%s(kafka): p(%s), c(%s)", topicPartition, kafkaOffset, kafkaOffset));
-                break;
-            case NONE:
-                // there is no stored offset, so an exception should be thrown, no change is needed
-                break;
-            case EARLIEST:
-                committed.put(topicPartition, offset);
-                position.put(topicPartition, offset);
-                LOG.info(String.format("\t%s(s3): p(%s), c(%s)", topicPartition, offset, offset));
-        }
-    }
-
-    public void resetOffsets(Map<TopicPartition, Long> offsetOutOfRangePartitions) {
-        offsetOutOfRangePartitions.forEach(this::resetOffset);
-    }
 }
