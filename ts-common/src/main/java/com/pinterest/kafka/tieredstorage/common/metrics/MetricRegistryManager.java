@@ -33,7 +33,7 @@ public class MetricRegistryManager {
     private static final Logger LOG = LogManager.getLogger(MetricRegistryManager.class.getName());
     private static final ThreadLocal<MetricRegistryManager> metricRegistryManager = ThreadLocal.withInitial(() -> null);
     private final Map<String, MetricRegistryAndReporter> metricRegistryAndReporterMap;
-    private ScheduledExecutorService executorService;
+    private ScheduledExecutorService executorService;   // TODO: make this in step with metricRegistryManager
     private static final AtomicInteger refCount = new AtomicInteger(0);
     private final MetricsConfiguration metricsConfiguration;
     private static final long REPORTER_FREQUENCY_MS = 60000;  // TODO: make this configurable
@@ -44,22 +44,20 @@ public class MetricRegistryManager {
         this.metricRegistryAndReporterMap = new ConcurrentHashMap<>();
         if (!metricsConfiguration.getMetricsReporterClassName().equals(NoOpMetricsReporter.class.getName())) {
             // initialize the thread pool only once
-            if (refCount.getAndIncrement() == 0)
-                executorService = Executors.newScheduledThreadPool(5);  // TODO: make this configurable
-
+            executorService = Executors.newScheduledThreadPool(5);  // TODO: make this configurable
         }
+        refCount.incrementAndGet();
     }
 
     /**
      * Shuts down the executorService and clears the metricRegistryAndReporter map if the refCount is 0.
      */
     public void shutdown() throws InterruptedException {
-        if (refCount.decrementAndGet() == 0) {
-            LOG.info("Shutting down executorService and clearing metricRegistryAndReporter map");
-            executorService.shutdown();
-            metricRegistryAndReporterMap.clear();
-        }
-        metricRegistryManager.set(null);
+        LOG.info("Shutting down executorService and clearing metricRegistryAndReporter map in thread=" + Thread.currentThread().getName());
+        executorService.shutdown();
+        metricRegistryAndReporterMap.clear();
+        metricRegistryManager.remove();
+        refCount.decrementAndGet();
     }
 
     /**
