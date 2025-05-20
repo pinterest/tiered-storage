@@ -422,7 +422,7 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
         } catch (InvalidOffsetException e) {
             // If this is a NoOffsetForPartitionException, it means no Kafka offsets exist for some partitions
             // If this is an OffsetOutOfRangeException, it means that the offsets are out of range in Kafka.
-            LOG.info("InvalidOffsetException: " + e.getClass().getName() + " for partitions: " + e.partitions());
+            LOG.debug("InvalidOffsetException: " + e.getClass().getName() + " for partitions: " + e.partitions());
             handleInvalidOffsetException(ts, e);
         } finally {
             if (autoCommitEnabled) {
