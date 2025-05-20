@@ -66,35 +66,23 @@ public class TestBase {
         }
     }
 
-    private static long getMinOffsetForTopicPartition(String topic, int partition) throws IOException {
-        Path tpPath = Paths.get(TEMP_LOG_DIR, topic + "-" + partition);
-        List<Path> files = Files.list(tpPath)
-                .filter(path -> path.getFileName().toString().endsWith(".log") || path.getFileName().toString().endsWith(".index") || path.getFileName().toString().endsWith(".timeindex") || path.getFileName().toString().endsWith(".snapshot"))
-                .sorted().collect(Collectors.toList());
-        if (files.isEmpty()) {
-            LOG.info("No files found in " + tpPath);
-            return Long.MIN_VALUE;
-        }
-        long minOffset = Long.parseLong(files.get(0).toFile().getName().split("\\.")[0]);
-        LOG.info("Min offset now is " + minOffset + " for topic " + topic + " partition " + partition);
-        return minOffset;
-    }
-
     protected static long waitForRetentionCleanupAndVerify(String topic, int partition, long minOffsetToDelete) {
         long beginningOffsets = getBeginningOffsets(topic, partition);
+        long startTs = System.currentTimeMillis();
         while (beginningOffsets < minOffsetToDelete) {
-            if (System.currentTimeMillis() - beginningOffsets > 60000) {
+            if (System.currentTimeMillis() - startTs > 60000) {
                 LOG.info("Timeout waiting for retention cleanup for topic " + topic + " partition " + partition);
                 break;
             }
             beginningOffsets = Math.max(beginningOffsets, getBeginningOffsets(topic, partition));
+            LOG.info("Waiting for retention cleanup: " + topic + "-" + partition + ". Min offset to delete: " + minOffsetToDelete + ". Beginning offset: " + beginningOffsets);
             try {
                 Thread.sleep(500);
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
             }
         }
-        LOG.info("After waiting, beginning offsets now is " + beginningOffsets + " for topic " + topic + " partition " + partition);
+        LOG.info("After waiting, beginning offsets now is " + beginningOffsets + " for topic " + topic + " partition " + partition + ", minOffsetToDelete was " + minOffsetToDelete);
         return beginningOffsets;
     }
 
