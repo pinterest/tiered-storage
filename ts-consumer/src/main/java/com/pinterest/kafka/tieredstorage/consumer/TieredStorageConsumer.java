@@ -714,11 +714,15 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
             try {
                 LOG.info("Closing s3Consumer");
                 this.s3Consumer.close();
-                LOG.info("Closing MetricRegistryManager");
-                MetricRegistryManager.getInstance(metricsConfiguration).shutdown();
-            } catch (IOException | InterruptedException e) {
+            } catch (IOException e) {
                 LOG.warn("Exception while closing", e);
             }
+        }
+        LOG.info("Closing MetricRegistryManager");
+        try {
+            MetricRegistryManager.getInstance(metricsConfiguration).shutdown();
+        } catch (InterruptedException e) {
+            LOG.warn("Exception while shutting down MetricRegistryManager", e);
         }
     }
 
