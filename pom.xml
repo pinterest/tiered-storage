@@ -17,6 +17,7 @@
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.surefire.version>3.0.0-M5</maven.surefire.version>
+        <kafka.version>3.4.0</kafka.version>
     </properties>
     <developers>
         <developer>
