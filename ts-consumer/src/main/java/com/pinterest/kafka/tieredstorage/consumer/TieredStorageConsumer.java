@@ -275,9 +275,9 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
     public void assign(Collection<TopicPartition> topicPartitions) {
         subscription.clear();
         kafkaConsumer.assign(topicPartitions);
-        rebalanceListener.onPartitionsRevoked(kafkaConsumer.assignment());
-        rebalanceListener.onPartitionsAssigned(topicPartitions);
         if (tieredStorageConsumptionPossible()) {
+            rebalanceListener.onPartitionsRevoked(kafkaConsumer.assignment());
+            rebalanceListener.onPartitionsAssigned(topicPartitions);
             topicPartitions.forEach(tp -> setTieredStorageLocations(Collections.singleton(tp.topic())));
             s3Consumer.assign(kafkaConsumer.assignment());
         }
@@ -685,6 +685,12 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
     public long position(TopicPartition partition) {
         if (!kafkaConsumer.assignment().contains(partition)) {
             throw new IllegalStateException("Can only check position for partitions assigned to this consumer");
+        }
+        if (!this.positions.containsKey(partition)) {
+            // if we don't have a position for this partition, it must be in KAFKA_ONLY mode because
+            // other modes would have set the position via rebalanceListener
+            // Therefore, we need to get the position from kafka
+            return kafkaConsumer.position(partition);
         }
         return this.positions.get(partition);
     }

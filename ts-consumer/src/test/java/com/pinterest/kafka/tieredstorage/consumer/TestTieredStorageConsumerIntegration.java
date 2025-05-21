@@ -6,6 +6,7 @@ import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.clients.consumer.NoOffsetForPartitionException;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.clients.consumer.OffsetOutOfRangeException;
 import org.apache.kafka.clients.consumer.OffsetResetStrategy;
@@ -713,6 +714,97 @@ public class TestTieredStorageConsumerIntegration extends TestS3Base {
             assertEquals(0, beginningOffsets.get(tp2));
         }
 
+        tsConsumer.close();
+    }
+
+    @ParameterizedTest
+    @EnumSource(TieredStorageConsumer.TieredStorageMode.class)
+    void testOffsetResetPositionScenarios(TieredStorageConsumer.TieredStorageMode mode) throws IOException, ClassNotFoundException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
+        Properties props = getStandardTieredStorageConsumerProperties(mode, sharedKafkaTestResource.getKafkaConnectString());
+        sendTestData(TEST_TOPIC_A, 0, 100);
+
+        // test none for both Kafka and TS config
+        props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "none");
+        props.setProperty(TieredStorageConsumerConfig.OFFSET_RESET_CONFIG, TieredStorageConsumer.OffsetReset.NONE.name());
+        tsConsumer = new TieredStorageConsumer<>(props);
+        tsConsumer.assign(Collections.singleton(new TopicPartition(TEST_TOPIC_A, 0)));
+        assertThrows(NoOffsetForPartitionException.class, () -> tsConsumer.position(new TopicPartition(TEST_TOPIC_A, 0)));
+        tsConsumer.close();
+
+        // test none for Kafka and earliest for TS config
+        props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "none");
+        props.setProperty(TieredStorageConsumerConfig.OFFSET_RESET_CONFIG, TieredStorageConsumer.OffsetReset.EARLIEST.name());
+        tsConsumer = new TieredStorageConsumer<>(props);
+        tsConsumer.assign(Collections.singleton(new TopicPartition(TEST_TOPIC_A, 0)));
+        if (mode == TieredStorageConsumer.TieredStorageMode.KAFKA_ONLY) {
+            assertThrows(NoOffsetForPartitionException.class, () -> tsConsumer.position(new TopicPartition(TEST_TOPIC_A, 0)));
+        } else {
+            assertEquals(0L, tsConsumer.position(new TopicPartition(TEST_TOPIC_A, 0)));
+        }
+        tsConsumer.close();
+
+        // test earliest for both Kafka and TS config
+        props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+        props.setProperty(TieredStorageConsumerConfig.OFFSET_RESET_CONFIG, TieredStorageConsumer.OffsetReset.EARLIEST.name());
+        tsConsumer = new TieredStorageConsumer<>(props);
+        tsConsumer.assign(Collections.singleton(new TopicPartition(TEST_TOPIC_A, 0)));
+        assertEquals(0L, tsConsumer.position(new TopicPartition(TEST_TOPIC_A, 0)));
+        tsConsumer.close();
+
+        // test earliest for Kafka and none for TS config
+        props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+        props.setProperty(TieredStorageConsumerConfig.OFFSET_RESET_CONFIG, TieredStorageConsumer.OffsetReset.NONE.name());
+        tsConsumer = new TieredStorageConsumer<>(props);
+        tsConsumer.assign(Collections.singleton(new TopicPartition(TEST_TOPIC_A, 0)));
+        if (mode == TieredStorageConsumer.TieredStorageMode.KAFKA_ONLY) {
+            assertEquals(0L, tsConsumer.position(new TopicPartition(TEST_TOPIC_A, 0)));
+        } else {
+            assertThrows(NoOffsetForPartitionException.class, () -> tsConsumer.position(new TopicPartition(TEST_TOPIC_A, 0)));
+        }
+        tsConsumer.close();
+
+        // test latest for both Kafka and TS config
+        props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest");
+        props.setProperty(TieredStorageConsumerConfig.OFFSET_RESET_CONFIG, TieredStorageConsumer.OffsetReset.LATEST.name());
+        tsConsumer = new TieredStorageConsumer<>(props);
+        tsConsumer.assign(Collections.singleton(new TopicPartition(TEST_TOPIC_A, 0)));
+        assertEquals(100L, tsConsumer.position(new TopicPartition(TEST_TOPIC_A, 0)));
+        tsConsumer.close();
+
+        // test latest for Kafka and earliest for TS config
+        props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest");
+        props.setProperty(TieredStorageConsumerConfig.OFFSET_RESET_CONFIG, TieredStorageConsumer.OffsetReset.EARLIEST.name());
+        tsConsumer = new TieredStorageConsumer<>(props);
+        tsConsumer.assign(Collections.singleton(new TopicPartition(TEST_TOPIC_A, 0)));
+        if (mode == TieredStorageConsumer.TieredStorageMode.KAFKA_ONLY) {
+            assertEquals(100L, tsConsumer.position(new TopicPartition(TEST_TOPIC_A, 0)));
+        } else {
+            assertEquals(0L, tsConsumer.position(new TopicPartition(TEST_TOPIC_A, 0)));
+        }
+        tsConsumer.close();
+
+        // test latest for Kafka and none for TS config
+        props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest");
+        props.setProperty(TieredStorageConsumerConfig.OFFSET_RESET_CONFIG, TieredStorageConsumer.OffsetReset.NONE.name());
+        tsConsumer = new TieredStorageConsumer<>(props);
+        tsConsumer.assign(Collections.singleton(new TopicPartition(TEST_TOPIC_A, 0)));
+        if (mode == TieredStorageConsumer.TieredStorageMode.KAFKA_ONLY) {
+            assertEquals(100L, tsConsumer.position(new TopicPartition(TEST_TOPIC_A, 0)));
+        } else {
+            assertThrows(NoOffsetForPartitionException.class, () -> tsConsumer.position(new TopicPartition(TEST_TOPIC_A, 0)));
+        }
+        tsConsumer.close();
+
+        // test earliest for Kafka and latest for TS config
+        props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+        props.setProperty(TieredStorageConsumerConfig.OFFSET_RESET_CONFIG, TieredStorageConsumer.OffsetReset.LATEST.name());
+        tsConsumer = new TieredStorageConsumer<>(props);
+        tsConsumer.assign(Collections.singleton(new TopicPartition(TEST_TOPIC_A, 0)));
+        if (mode == TieredStorageConsumer.TieredStorageMode.KAFKA_ONLY) {
+            assertEquals(0L, tsConsumer.position(new TopicPartition(TEST_TOPIC_A, 0)));
+        } else {
+            assertEquals(100L, tsConsumer.position(new TopicPartition(TEST_TOPIC_A, 0)));
+        }
         tsConsumer.close();
     }
 
