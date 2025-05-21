@@ -54,7 +54,9 @@ public class MetricRegistryManager {
      */
     public void shutdown() throws InterruptedException {
         LOG.info("Shutting down executorService and clearing metricRegistryAndReporter map in thread=" + Thread.currentThread().getName());
-        executorService.shutdown();
+        if (executorService != null) {
+            executorService.shutdown();
+        }
         metricRegistryAndReporterMap.clear();
         metricRegistryManager.remove();
         refCount.decrementAndGet();
