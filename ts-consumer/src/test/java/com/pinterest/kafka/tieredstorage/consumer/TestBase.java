@@ -39,11 +39,6 @@ public class TestBase {
         LOG.info(String.format("Produced %d records to topic %s, partition %d.", numRecords, topic, partition));
     }
 
-    @BeforeAll
-    static void setUpAll() throws IOException {
-        deleteDirectory(Paths.get(TEMP_LOG_DIR));
-    }
-
     @AfterEach
     void tearDown() throws IOException, ExecutionException, InterruptedException {
     }
