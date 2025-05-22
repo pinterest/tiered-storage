@@ -29,8 +29,7 @@ public class TestKafkaSegmentUploader extends TestBase {
     private static final SharedKafkaTestResource sharedKafkaTestResource = new SharedKafkaTestResource()
             .withBrokerProperty("log.segment.bytes", "30000")
             .withBrokerProperty("log.index.interval.bytes", "100")
-            .withBrokerProperty("log.segment.delete.delay.ms", "5000")
-            .withBrokerProperty("log.dir", "/tmp/kafka-unit");
+            .withBrokerProperty("log.segment.delete.delay.ms", "5000");
     private static AdminClient adminClient;
     private KafkaSegmentUploader uploader;
     private KafkaEnvironmentProvider environmentProvider;
