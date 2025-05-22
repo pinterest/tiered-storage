@@ -8,6 +8,7 @@ import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
 import java.io.IOException;
@@ -37,6 +38,12 @@ public class TestBase {
         sharedKafkaTestResource.getKafkaTestUtils().produceRecords(numRecords, topic, partition);
         LOG.info(String.format("Produced %d records to topic %s, partition %d.", numRecords, topic, partition));
     }
+
+    @BeforeAll
+    static void setUpAll() throws IOException {
+        deleteDirectory(Paths.get(TEMP_LOG_DIR));
+    }
+
     @AfterEach
     void tearDown() throws IOException, ExecutionException, InterruptedException {
     }
