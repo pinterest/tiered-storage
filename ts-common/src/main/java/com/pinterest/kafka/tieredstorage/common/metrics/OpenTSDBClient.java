@@ -72,7 +72,7 @@ public class OpenTSDBClient {
             }
         }
         if (socket.isConnected() && !socket.isClosed())
-            LOG.info(String.format("Socket is connected to %s", address));
+            LOG.debug(String.format("Socket is connected to %s", address));
         else {
             LOG.error("Socket is not connected after reset");
         }
