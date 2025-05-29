@@ -10,7 +10,6 @@ import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerGroupMetadata;
 import org.apache.kafka.clients.consumer.ConsumerRebalanceListener;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.InvalidOffsetException;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
@@ -298,7 +297,6 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
      */
     @Override
     public ConsumerRecords<K, V> poll(Duration timeout) {
-        // TODO: implement timeout check while waiting for partition assignment
         long beforePollMs = System.currentTimeMillis();
         ConsumerRecords<K, V> records;
         AtomicBoolean ts = new AtomicBoolean(false);
@@ -349,8 +347,9 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
             }
         });
 
-        if (ts.get())   // need to seek kafkaConsumer if previous consumption was from s3
+        if (ts.get()) {   // need to seek kafkaConsumer if previous consumption was from s3
             KafkaConsumerUtils.resetOffsets(kafkaConsumer, positions);
+        }
         return records;
     }
 
@@ -686,13 +685,32 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
         if (!kafkaConsumer.assignment().contains(partition)) {
             throw new IllegalStateException("Can only check position for partitions assigned to this consumer");
         }
+        long kafkaConsumerPosition = kafkaConsumer.position(partition);
         if (!this.positions.containsKey(partition)) {
             // if we don't have a position for this partition, it must be in KAFKA_ONLY mode because
             // other modes would have set the position via rebalanceListener
             // Therefore, we need to get the position from kafka
-            return kafkaConsumer.position(partition);
+            return kafkaConsumerPosition;
         }
-        return this.positions.get(partition);
+        // if TS consumer position is set, check if it is different from the kafka consumer position
+        long tsPosition = this.positions.get(partition);
+        if (tsPosition == kafkaConsumerPosition) {
+            return tsPosition;
+        }
+        // if they are different, we need to return the position based on the tiered storage mode
+        switch (tieredStorageMode) {
+            case KAFKA_PREFERRED:
+                // if we are in KAFKA_PREFERRED mode, return the kafka consumer position
+                return kafkaConsumerPosition;
+            case TIERED_STORAGE_ONLY:
+                // if we are in TIERED_STORAGE_ONLY mode, return the TS position
+                return tsPosition;
+            case KAFKA_ONLY:
+                // if we are in KAFKA_ONLY mode, return the kafka consumer position
+                return kafkaConsumerPosition;
+            default:
+                throw new IllegalStateException("Unknown tiered storage mode: " + tieredStorageMode);
+        }
     }
 
     @Override

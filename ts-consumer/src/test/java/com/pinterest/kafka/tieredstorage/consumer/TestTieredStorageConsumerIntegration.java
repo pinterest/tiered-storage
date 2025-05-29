@@ -2,6 +2,7 @@ package com.pinterest.kafka.tieredstorage.consumer;
 
 import com.pinterest.kafka.tieredstorage.common.CommonTestUtils;
 import com.pinterest.kafka.tieredstorage.common.discovery.s3.MockS3StorageServiceEndpointProvider;
+import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
@@ -235,7 +236,7 @@ public class TestTieredStorageConsumerIntegration extends TestS3Base {
             totalConsumed = consumedByPartition[0] + consumedByPartition[1] + consumedByPartition[2];
         }
 
-        assertNoMoreRecords(Duration.ofSeconds(5));
+        assertNoMoreRecords(tsConsumer, Duration.ofSeconds(5));
         assertEquals(TEST_TOPIC_A_P0_NUM_RECORDS, consumedByPartition[0]);
         assertEquals(TEST_TOPIC_A_P1_NUM_RECORDS, consumedByPartition[1]);
         assertEquals(TEST_TOPIC_A_P2_NUM_RECORDS, consumedByPartition[2]);
@@ -243,6 +244,91 @@ public class TestTieredStorageConsumerIntegration extends TestS3Base {
 
         tsConsumer.close();
         closeS3Mocks();
+    }
+
+    @ParameterizedTest
+    @EnumSource(TieredStorageConsumer.TieredStorageMode.class)
+    void testPositionKafka(TieredStorageConsumer.TieredStorageMode mode) throws IOException, ClassNotFoundException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
+        if (mode == TieredStorageConsumer.TieredStorageMode.TIERED_STORAGE_ONLY) {
+            LOG.info("Skipping testPositionKafka for TIERED_STORAGE_ONLY mode");
+            return;
+        }
+
+        Properties props = getStandardTieredStorageConsumerProperties(mode, sharedKafkaTestResource.getKafkaConnectString());
+        props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, OffsetResetStrategy.EARLIEST.name().toLowerCase());
+        tsConsumer = new TieredStorageConsumer<>(props);
+
+        TopicPartition tpa0 = new TopicPartition(TEST_TOPIC_A, 0);
+        TopicPartition tpa1 = new TopicPartition(TEST_TOPIC_A, 1);
+        TopicPartition tpa2 = new TopicPartition(TEST_TOPIC_A, 2);
+        Collection<TopicPartition> toAssign = new HashSet<>(Arrays.asList(tpa0, tpa2));
+        tsConsumer.assign(toAssign);
+
+        sendTestData(TEST_TOPIC_A, 0, 100);
+        sendTestData(TEST_TOPIC_A, 1, 100);
+        sendTestData(TEST_TOPIC_A, 2, 100);
+
+        assertThrows(IllegalStateException.class, () -> tsConsumer.position(tpa1));
+
+        int consumed = 0;
+        while (consumed < 200) {
+            ConsumerRecords<String, String> records = tsConsumer.poll(Duration.ofMillis(100));
+            consumed += records.count();
+        }
+
+        assertNoMoreRecords(tsConsumer, Duration.ofSeconds(5));
+        assertEquals(100L, tsConsumer.position(tpa0));
+        assertThrows(IllegalStateException.class, () -> tsConsumer.position(tpa1));
+        assertEquals(100L, tsConsumer.position(tpa2));
+
+        tsConsumer.seek(tpa0, 20L);
+        assertEquals(20L, tsConsumer.position(tpa0));
+        assertThrows(IllegalStateException.class, () -> tsConsumer.position(tpa1));
+        assertEquals(100L, tsConsumer.position(tpa2));
+
+        tsConsumer.seek(tpa2, 30L);
+        assertEquals(20L, tsConsumer.position(tpa0));
+        assertThrows(IllegalStateException.class, () -> tsConsumer.position(tpa1));
+        assertEquals(30L, tsConsumer.position(tpa2));
+
+        List<ConsumerRecord<String, String>> consumedRecords = new ArrayList<>();
+        while (consumedRecords.size() < 150) {
+            ConsumerRecords<String, String> records = tsConsumer.poll(Duration.ofMillis(100));
+            records.forEach(consumedRecords::add);
+        }
+
+        assertNoMoreRecords(tsConsumer, Duration.ofSeconds(5));
+        int p0Count = 0;
+        int p1Count = 0;
+        int p2Count = 0;
+
+        for (ConsumerRecord<String, String> record : consumedRecords) {
+            if (record.partition() == 0)
+                p0Count++;
+            if (record.partition() == 1)
+                p1Count++;
+            if (record.partition() == 2)
+                p2Count++;
+        }
+        assertEquals(80, p0Count);
+        assertEquals(0, p1Count);
+        assertEquals(70, p2Count);
+
+        assertEquals(100L, tsConsumer.position(tpa0));
+        assertThrows(IllegalStateException.class, () -> tsConsumer.position(tpa1));
+        assertEquals(100L, tsConsumer.position(tpa2));
+
+        // test case when TS position is different from Kafka position
+        tsConsumer.getPositions().put(tpa0, 50L);
+        tsConsumer.getPositions().put(tpa1, 40L);
+        tsConsumer.getPositions().put(tpa2, 30L);
+
+        assertEquals(100L, tsConsumer.position(tpa0));
+        assertThrows(IllegalStateException.class, () -> tsConsumer.position(tpa1));
+        assertEquals(100L, tsConsumer.position(tpa2));
+
+        tsConsumer.close();
+
     }
 
     /**
@@ -263,14 +349,17 @@ public class TestTieredStorageConsumerIntegration extends TestS3Base {
         sendTestData(TEST_TOPIC_A, 2, 100);
 
         tsConsumer.seek(new TopicPartition(TEST_TOPIC_A, 0), 20L);
+        assertEquals(20, tsConsumer.position(new TopicPartition(TEST_TOPIC_A, 0)));
 
         List<ConsumerRecord<String, String>> consumed = new ArrayList<>();
         while (consumed.size() < 180) {
             ConsumerRecords<String, String> records = tsConsumer.poll(Duration.ofMillis(100));
-            records.forEach(consumed::add);
+            records.forEach(r -> {
+                consumed.add(r);
+            });
         }
 
-        assertNoMoreRecords(Duration.ofSeconds(5));
+        assertNoMoreRecords(tsConsumer, Duration.ofSeconds(5));
 
         int p0Count = 0;
         int p1Count = 0;
@@ -298,7 +387,7 @@ public class TestTieredStorageConsumerIntegration extends TestS3Base {
             records.forEach(consumed::add);
         }
 
-        assertNoMoreRecords(Duration.ofSeconds(2));
+        assertNoMoreRecords(tsConsumer, Duration.ofSeconds(2));
         p0Count = 0;
         p1Count = 0;
         p2Count = 0;
@@ -492,7 +581,7 @@ public class TestTieredStorageConsumerIntegration extends TestS3Base {
                 consumed++;
             }
         }
-        assertNoMoreRecords(Duration.ofSeconds(5));
+        assertNoMoreRecords(tsConsumer, Duration.ofSeconds(5));
         assertEquals(TEST_TOPIC_A_P0_NUM_RECORDS, consumed);
         assertEquals(TEST_TOPIC_A_P0_NUM_RECORDS, tsConsumer.getPositions().get(tp));
         assertEquals(minOffsetOnKafka, tieredStorageConsumed - overlapOffsets);
@@ -558,7 +647,7 @@ public class TestTieredStorageConsumerIntegration extends TestS3Base {
             }
         }
 
-        assertNoMoreRecords(Duration.ofSeconds(5));
+        assertNoMoreRecords(tsConsumer, Duration.ofSeconds(5));
         assertEquals(TEST_TOPIC_A_P0_NUM_RECORDS, consumedByPartition[0]);
         assertEquals(TEST_TOPIC_A_P1_NUM_RECORDS, consumedByPartition[1]);
         assertEquals(TEST_TOPIC_A_P2_NUM_RECORDS, consumedByPartition[2]);
@@ -628,7 +717,7 @@ public class TestTieredStorageConsumerIntegration extends TestS3Base {
             }
         }
 
-        assertNoMoreRecords(Duration.ofSeconds(5));
+        assertNoMoreRecords(tsConsumer, Duration.ofSeconds(5));
         assertEquals(TEST_TOPIC_A_P0_NUM_RECORDS, consumedByPartition[0]);
         assertEquals(TEST_TOPIC_A_P1_NUM_RECORDS, consumedByPartition[1]);
         assertEquals(TEST_TOPIC_A_P2_NUM_RECORDS, consumedByPartition[2]);
@@ -944,7 +1033,7 @@ public class TestTieredStorageConsumerIntegration extends TestS3Base {
             assertEquals(consumedByPartition[2], tsConsumer.committed(tta2).offset());
         }
 
-        assertNoMoreRecords(Duration.ofSeconds(5));
+        assertNoMoreRecords(tsConsumer, Duration.ofSeconds(5));
         Map<TopicPartition, OffsetAndMetadata> committed = tsConsumer.committed(new HashSet<>(Arrays.asList(tta0, tta1, tta2)));
         for (TopicPartition tp : committed.keySet()) {
             assertEquals(consumedByPartition[tp.partition()], committed.get(tp).offset());
@@ -1026,17 +1115,17 @@ public class TestTieredStorageConsumerIntegration extends TestS3Base {
             assertEquals(consumedByPartition[2], tsConsumer.committed(tta2).offset());
         }
 
-        assertNoMoreRecords(Duration.ofSeconds(5));
+        assertNoMoreRecords(tsConsumer, Duration.ofSeconds(5));
         Map<TopicPartition, OffsetAndMetadata> committed = tsConsumer.committed(new HashSet<>(Arrays.asList(tta0, tta1, tta2)));
         for (TopicPartition tp : committed.keySet()) {
             assertEquals(consumedByPartition[tp.partition()], committed.get(tp).offset());
         }
     }
 
-    private void assertNoMoreRecords(Duration checkTime) {
+    private static void assertNoMoreRecords(Consumer<String, String> consumer, Duration checkTime) {
         long begin = System.currentTimeMillis();
         while (System.currentTimeMillis() - begin < checkTime.toMillis()) {
-            assertEquals(0, tsConsumer.poll(Duration.ofMillis(100)).count());
+            assertEquals(0, consumer.poll(Duration.ofMillis(100)).count());
         }
     }
 

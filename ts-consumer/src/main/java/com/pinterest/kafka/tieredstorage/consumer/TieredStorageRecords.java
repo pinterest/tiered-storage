@@ -22,6 +22,8 @@ public class TieredStorageRecords<K, V> {
     }
 
     public void addRecords(TopicPartition topicPartition, List<ConsumerRecord<K, V>> partitionRecords) {
+        if (partitionRecords == null || partitionRecords.isEmpty())
+            return;
         if (records.containsKey(topicPartition))
             records.get(topicPartition).addAll(partitionRecords);
         else
