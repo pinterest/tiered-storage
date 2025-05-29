@@ -685,7 +685,21 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
         if (!kafkaConsumer.assignment().contains(partition)) {
             throw new IllegalStateException("Can only check position for partitions assigned to this consumer");
         }
-        long kafkaConsumerPosition = kafkaConsumer.position(partition);
+        long kafkaConsumerPosition;
+        try {
+            kafkaConsumerPosition = kafkaConsumer.position(partition);
+        } catch (NoOffsetForPartitionException e) {
+            // we are likely in TIERED_STORAGE_ONLY or KAFKA_PREFERRED since this usually gets thrown when
+            // we have no offset reset policy set for the underlying consumer
+            if (tieredStorageMode == TieredStorageMode.KAFKA_ONLY) {
+                // if we are in KAFKA_ONLY mode, throw it
+                throw e;
+            } else if (!this.positions.containsKey(partition)) {
+                throw e;
+            } else {
+                return this.positions.get(partition);
+            }
+        }
         if (!this.positions.containsKey(partition)) {
             // if we don't have a position for this partition, it must be in KAFKA_ONLY mode because
             // other modes would have set the position via rebalanceListener

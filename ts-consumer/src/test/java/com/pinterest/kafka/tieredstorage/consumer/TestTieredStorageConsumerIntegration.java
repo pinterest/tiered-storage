@@ -38,6 +38,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
 
 import static com.pinterest.kafka.tieredstorage.common.CommonTestUtils.writeExpectedRecordFormatTestData;
@@ -329,6 +330,85 @@ public class TestTieredStorageConsumerIntegration extends TestS3Base {
 
         tsConsumer.close();
 
+    }
+
+    @ParameterizedTest
+    @EnumSource(TieredStorageConsumer.TieredStorageMode.class)
+    void testPositionTieredStorage(TieredStorageConsumer.TieredStorageMode mode) throws IOException, ClassNotFoundException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
+        if (mode == TieredStorageConsumer.TieredStorageMode.KAFKA_ONLY) {
+            LOG.info("Skipping testPositionTieredStorage for KAFKA_ONLY mode");
+            return;
+        }
+        prepareS3Mocks();
+        tsConsumer = getTieredStorageConsumer(mode);
+        TopicPartition tpa0 = new TopicPartition(TEST_TOPIC_A, 0);
+        TopicPartition tpa1 = new TopicPartition(TEST_TOPIC_A, 1);
+        TopicPartition tpa2 = new TopicPartition(TEST_TOPIC_A, 2);
+        Collection<TopicPartition> toAssign = new HashSet<>(Arrays.asList(tpa0, tpa1, tpa2));
+        tsConsumer.assign(toAssign);
+
+        putObjects(TEST_CLUSTER, TEST_TOPIC_A, 0, "src/test/resources/log-files/test_topic_a-0");
+        putObjects(TEST_CLUSTER, TEST_TOPIC_A, 1, "src/test/resources/log-files/test_topic_a-1");
+        putObjects(TEST_CLUSTER, TEST_TOPIC_A, 2, "src/test/resources/log-files/test_topic_a-2");
+
+        int[] consumed = new int[3];
+        while (consumed[0] < TEST_TOPIC_A_P0_NUM_RECORDS || consumed[1] < TEST_TOPIC_A_P1_NUM_RECORDS || consumed[2] < TEST_TOPIC_A_P2_NUM_RECORDS) {
+            ConsumerRecords<String, String> records = tsConsumer.poll(Duration.ofMillis(100));
+            records.forEach(r -> {
+                consumed[r.partition()]++;
+            });
+            assertEquals(tsConsumer.position(tpa0), consumed[0]);
+            assertEquals(tsConsumer.position(tpa1), consumed[1]);
+            assertEquals(tsConsumer.position(tpa2), consumed[2]);
+        }
+
+        assertNoMoreRecords(tsConsumer, Duration.ofSeconds(5));
+
+        assertEquals(TEST_TOPIC_A_P0_NUM_RECORDS, consumed[0]);
+        assertEquals(TEST_TOPIC_A_P1_NUM_RECORDS, consumed[1]);
+        assertEquals(TEST_TOPIC_A_P2_NUM_RECORDS, consumed[2]);
+
+        assertEquals(TEST_TOPIC_A_P0_NUM_RECORDS, tsConsumer.position(tpa0));
+        assertEquals(TEST_TOPIC_A_P1_NUM_RECORDS, tsConsumer.position(tpa1));
+        assertEquals(TEST_TOPIC_A_P2_NUM_RECORDS, tsConsumer.position(tpa2));
+
+        closeS3Mocks();
+        tsConsumer.close();
+    }
+
+    @ParameterizedTest
+    @EnumSource(TieredStorageConsumer.TieredStorageMode.class)
+    void testPositionMock(TieredStorageConsumer.TieredStorageMode mode) throws IOException, ClassNotFoundException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
+        tsConsumer = getTieredStorageConsumer(mode);
+        TopicPartition tpa0 = new TopicPartition(TEST_TOPIC_A, 0);
+        TopicPartition tpa1 = new TopicPartition(TEST_TOPIC_A, 1);
+        TopicPartition tpa2 = new TopicPartition(TEST_TOPIC_A, 2);
+
+        Set<TopicPartition> toAssign = new HashSet<>(Arrays.asList(tpa0, tpa1, tpa2));
+
+        KafkaConsumer<String, String> kafkaConsumer = Mockito.mock(KafkaConsumer.class);
+        when(kafkaConsumer.position(tpa0)).thenReturn(100L);
+        when(kafkaConsumer.position(tpa1)).thenReturn(101L);
+        when(kafkaConsumer.position(tpa2)).thenReturn(200L);
+        when(kafkaConsumer.assignment()).thenReturn(toAssign);
+
+        tsConsumer.setKafkaConsumer(kafkaConsumer);
+
+        tsConsumer.getPositions().put(tpa0, 50L);
+        tsConsumer.getPositions().put(tpa1, 40L);
+        tsConsumer.getPositions().put(tpa2, 30L);
+
+        if (mode == TieredStorageConsumer.TieredStorageMode.KAFKA_ONLY || mode == TieredStorageConsumer.TieredStorageMode.KAFKA_PREFERRED) {
+            assertEquals(100L, tsConsumer.position(tpa0));
+            assertEquals(101L, tsConsumer.position(tpa1));
+            assertEquals(200L, tsConsumer.position(tpa2));
+        } else if (mode == TieredStorageConsumer.TieredStorageMode.TIERED_STORAGE_ONLY) {
+            assertEquals(50L, tsConsumer.position(tpa0));
+            assertEquals(40L, tsConsumer.position(tpa1));
+            assertEquals(30L, tsConsumer.position(tpa2));
+        }
+
+        tsConsumer.close();
     }
 
     /**
