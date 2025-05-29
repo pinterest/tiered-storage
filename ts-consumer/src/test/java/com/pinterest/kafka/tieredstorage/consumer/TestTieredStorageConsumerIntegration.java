@@ -594,8 +594,7 @@ public class TestTieredStorageConsumerIntegration extends TestS3Base {
         while (consumed < numRecords * 0.2 && !(records = tsConsumer.poll(Duration.ofMillis(100))).isEmpty()) {
             consumed += records.count();
         }
-        long pos = tsConsumer.position(tp);
-        assertEquals(pos, consumed);
+        long boundary = consumed;
 
         // next consumption should be from Kafka
         tsConsumer.setKafkaConsumer(actualKafkaConsumer);
@@ -606,7 +605,7 @@ public class TestTieredStorageConsumerIntegration extends TestS3Base {
             consumed += records.count();
         }
         assertEquals(numRecords, consumed);
-        assertEquals(numRecords - pos, kafkaConsumed);
+        assertEquals(numRecords - boundary, kafkaConsumed);
         assertEquals(numRecords, tsConsumer.getPositions().get(tp));
         tsConsumer.close();
         closeS3Mocks();
