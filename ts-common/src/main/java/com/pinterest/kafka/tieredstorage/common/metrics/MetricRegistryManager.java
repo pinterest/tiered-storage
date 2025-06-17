@@ -4,6 +4,7 @@ import com.codahale.metrics.MetricFilter;
 import com.codahale.metrics.MetricRegistry;
 import com.codahale.metrics.ScheduledReporter;
 import com.codahale.metrics.Snapshot;
+import com.google.common.annotations.VisibleForTesting;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 
@@ -13,6 +14,7 @@ import java.util.Arrays;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -29,10 +31,10 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class MetricRegistryManager {
 
     private static final Logger LOG = LogManager.getLogger(MetricRegistryManager.class.getName());
-    private static MetricRegistryManager metricRegistryManager;
+    private static final ThreadLocal<MetricRegistryManager> metricRegistryManager = ThreadLocal.withInitial(() -> null);
     private final Map<String, MetricRegistryAndReporter> metricRegistryAndReporterMap;
-    private ScheduledExecutorService executorService;
-    private final AtomicInteger refCount = new AtomicInteger(0);
+    private ScheduledExecutorService executorService;   // TODO: make this in step with metricRegistryManager
+    private static final AtomicInteger refCount = new AtomicInteger(0);
     private final MetricsConfiguration metricsConfiguration;
     private static final long REPORTER_FREQUENCY_MS = 60000;  // TODO: make this configurable
 
@@ -41,23 +43,23 @@ public class MetricRegistryManager {
         this.metricsConfiguration = metricsConfiguration;
         this.metricRegistryAndReporterMap = new ConcurrentHashMap<>();
         if (!metricsConfiguration.getMetricsReporterClassName().equals(NoOpMetricsReporter.class.getName())) {
-            LOG.info("Initializing MetricRegistryManager executorService thread pool");
             // initialize the thread pool only once
-            if (refCount.getAndIncrement() == 0)
-                executorService = Executors.newScheduledThreadPool(5);  // TODO: make this configurable
+            executorService = Executors.newScheduledThreadPool(5);  // TODO: make this configurable
         }
+        refCount.incrementAndGet();
     }
 
     /**
      * Shuts down the executorService and clears the metricRegistryAndReporter map if the refCount is 0.
      */
-    public void shutdown() {
-        if (refCount.decrementAndGet() == 0) {
-            LOG.info("Shutting down executorService and clearing metricRegistryAndReporter map");
+    public void shutdown() throws InterruptedException {
+        LOG.info("Shutting down executorService and clearing metricRegistryAndReporter map in thread=" + Thread.currentThread().getName());
+        if (executorService != null) {
             executorService.shutdown();
-            metricRegistryAndReporterMap.clear();
         }
-        metricRegistryManager = null;
+        metricRegistryAndReporterMap.clear();
+        metricRegistryManager.remove();
+        refCount.decrementAndGet();
     }
 
     /**
@@ -173,7 +175,8 @@ public class MetricRegistryManager {
                     Math.abs(serializedMetricTagString.hashCode()) % REPORTER_FREQUENCY_MS,
                     REPORTER_FREQUENCY_MS,
                     TimeUnit.MILLISECONDS
-            );            return new MetricRegistryAndReporter(registry, reporter);
+            );
+            return new MetricRegistryAndReporter(registry, reporter);
         });
     }
 
@@ -249,15 +252,20 @@ public class MetricRegistryManager {
     }
 
     /**
-     * Returns the singleton MetricRegistryManager instance with the given MetricsConfiguration.
+     * Returns the singleton ThreadLocal MetricRegistryManager instance with the given MetricsConfiguration.
      * @param metricsConfiguration
      * @return MetricRegistryManager
      */
     public static MetricRegistryManager getInstance(MetricsConfiguration metricsConfiguration) {
-        if (metricRegistryManager == null) {
-            LOG.info("Creating new MetricRegistryManager with configuration=" + metricsConfiguration);
-            metricRegistryManager = new MetricRegistryManager(metricsConfiguration);
+        if (metricRegistryManager.get() == null) {
+            LOG.info("Creating ThreadLocal<MetricRegistryManager> for thread=" + Thread.currentThread().getName() + " with new MetricRegistryManager instance. MetricsConfiguration=" + metricsConfiguration);
+            metricRegistryManager.set(new MetricRegistryManager(metricsConfiguration));
         }
-        return metricRegistryManager;
+        return metricRegistryManager.get();
+    }
+
+    @VisibleForTesting
+    protected static int getRefCount() {
+        return refCount.get();
     }
 }

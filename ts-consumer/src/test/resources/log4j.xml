@@ -14,8 +14,9 @@
     </root>
 
     <logger name="org.apache.kafka">
-        <level value="WARN"/>
+        <level value="INFO"/>
         <appender-ref ref="stdout"/>
     </logger>
+
 
 </log4j:configuration>

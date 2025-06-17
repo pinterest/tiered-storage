@@ -169,7 +169,7 @@ public class S3PartitionConsumer<K, V> {
 
         if (activeS3Offset > position) {
             LOG.warn(String.format("Lost offsets for %s: [%s, %s]", topicPartition, this.position, activeS3Offset - 1));
-            MetricRegistryManager.getInstance(metricsConfiguration).updateHistogram(
+            MetricRegistryManager.getInstance(metricsConfiguration).updateCounter(
                     topicPartition.topic(), topicPartition.partition(),
                     ConsumerMetrics.OFFSET_CONSUMPTION_MISSED_METRIC,
                     activeS3Offset - this.position,
@@ -421,6 +421,7 @@ public class S3PartitionConsumer<K, V> {
      * @param location
      */
     public void update(String location) {
-        this.location = location;
+        if (!this.location.equals(location))
+            this.location = location;
     }
 }

@@ -27,9 +27,8 @@ import java.util.Set;
 public class S3PartitionsConsumer<K, V> {
     private static final Logger LOG = LogManager.getLogger(S3PartitionsConsumer.class.getName());
     private final Map<TopicPartition, S3PartitionConsumer<K, V>> s3PartitionConsumerMap = new HashMap<>();
-    private final List<TopicPartition> topicPartitions = new ArrayList<>();
-    private int currentPartitionIndex = -1;
     private final String consumerGroup;
+    private int currPartitionIdx = -1;
     private Map<TopicPartition, Long> positions;
     private final Set<TopicPartition> pausedPartitions = new HashSet<>();
     private final Properties properties;
@@ -61,8 +60,8 @@ public class S3PartitionsConsumer<K, V> {
         return this.positions;
     }
 
-    private int nextPartitionIndex() {
-        return (++currentPartitionIndex) % topicPartitions.size();
+    private int nextPartitionIndex(Collection<TopicPartition> partitions) {
+        return (++currPartitionIdx) % partitions.size();
     }
 
     /**
@@ -71,16 +70,15 @@ public class S3PartitionsConsumer<K, V> {
      * @param topicPartition
      */
     public void add(String location, TopicPartition topicPartition) {
-        if (!topicPartitions.contains(topicPartition)) {
-            topicPartitions.add(topicPartition);
+        if (!s3PartitionConsumerMap.containsKey(topicPartition)) {
             s3PartitionConsumerMap.put(
                     topicPartition,
                     new S3PartitionConsumer<>(location, topicPartition, consumerGroup, properties, metricsConfiguration, keyDeserializer, valueDeserializer)
             );
-            LOG.info(String.format("Added %s for S3 consumption.", topicPartition));
+            LOG.debug(String.format("Added %s for topic-partition %s for S3 consumption.", location, topicPartition));
         } else {
             s3PartitionConsumerMap.get(topicPartition).update(location);
-            LOG.info(String.format("Updated %s for S3 consumption.", topicPartition));
+            LOG.debug(String.format("Updated %s for topic-partition %s for S3 consumption.", location, topicPartition));
         }
     }
 
@@ -89,21 +87,31 @@ public class S3PartitionsConsumer<K, V> {
      * @param maxRecords
      * @return records
      */
-    public ConsumerRecords<K, V> poll(int maxRecords) {
+    public ConsumerRecords<K, V> poll(int maxRecords, Collection<TopicPartition> partitions) {
         int consumedSoFar = 0;
         int round = 0;
         TieredStorageRecords<K, V> tieredStorageRecords = new TieredStorageRecords<>();
-        while (round < topicPartitions.size()) {
+        List<TopicPartition> topicPartitions = new ArrayList<>(partitions);
+        if (!s3PartitionConsumerMap.keySet().containsAll(partitions)) {
+            LOG.error(String.format("Partitions %s are not assigned to this consumer. Assigned partitions: %s",
+                    partitions, s3PartitionConsumerMap.keySet()));
+            return tieredStorageRecords.records();
+        }
+        while (round < partitions.size()) {
             LOG.debug(String.format("Current stored positions: %s", positions));
-            TopicPartition topicPartition = topicPartitions.get(nextPartitionIndex());
+            TopicPartition topicPartition = topicPartitions.get(nextPartitionIndex(partitions));
+            if (!partitions.contains(topicPartition)) {
+                LOG.debug(String.format("Skipping topic partition %s as it is not in the list of partitions to consume.", topicPartition));
+                continue;
+            }
             if (pausedPartitions.contains(topicPartition)) {
-                LOG.info(String.format("Fetching from topic partition %s is paused.", topicPartition));
+                LOG.debug(String.format("Fetching from topic partition %s is paused.", topicPartition));
                 continue;
             }
             LOG.debug(String.format("S3PartitionsConsumer Consumption round %s: partition: %s", round, topicPartition));
-            int toPartiallyConsume = (int) Math.ceil((maxRecords - consumedSoFar) * 1.0 / (topicPartitions.size() - round));
+            int toPartiallyConsume = (int) Math.ceil((maxRecords - consumedSoFar) * 1.0 / (partitions.size() - round));
             LOG.debug(String.format("(int) Math.ceil(%s - %s) / (%s - %s) = %s",
-                    maxRecords, consumedSoFar, topicPartitions.size(), round, toPartiallyConsume));
+                    maxRecords, consumedSoFar, partitions.size(), round, toPartiallyConsume));
             s3PartitionConsumerMap.get(topicPartition).setPosition(positions.get(topicPartition));
             List<ConsumerRecord<K, V>> records =
                     s3PartitionConsumerMap.get(topicPartition).poll(toPartiallyConsume, false);
@@ -113,6 +121,9 @@ public class S3PartitionsConsumer<K, V> {
         }
         if (tieredStorageRecords.records().count() > 0) {
             s3PartitionConsumerMap.forEach((tp, c) -> {
+                if (pausedPartitions.contains(tp) || !partitions.contains(tp)) {
+                    return;
+                }
                 long pos = c.getPosition();
                 positions.computeIfPresent(tp, (k, v) -> pos);
             });
@@ -173,7 +184,6 @@ public class S3PartitionsConsumer<K, V> {
      * Unsubscribes from the partitions
      */
     public void unsubscribe() {
-        this.topicPartitions.clear();
         this.s3PartitionConsumerMap.clear();
         // TODO: check if we need to close the partition consumer and clear positions
     }

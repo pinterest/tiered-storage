@@ -58,7 +58,7 @@ public class S3Consumer<K, V> {
                     s3FinalizedEndpoint.getPrefixExcludingTopicPartitionUri(),
                     topicPartition);
         });
-        LOG.info("Assigned partitions to S3 consumer: " + assignment);
+        LOG.debug("Assigned partitions to S3 consumer: " + assignment);
     }
 
     /**
@@ -103,8 +103,8 @@ public class S3Consumer<K, V> {
      * @param maxRecordsToConsume the maximum number of records to consume
      * @return the {@link ConsumerRecords} consumed from S3
      */
-    public ConsumerRecords<K, V> poll(int maxRecordsToConsume) {
-        ConsumerRecords<K, V> records = s3PartitionsConsumer.poll(maxRecordsToConsume);
+    public ConsumerRecords<K, V> poll(int maxRecordsToConsume, Collection<TopicPartition> partitions) {
+        ConsumerRecords<K, V> records = s3PartitionsConsumer.poll(maxRecordsToConsume, partitions);
         setPositions(s3PartitionsConsumer.getPositions());
         return records;
     }

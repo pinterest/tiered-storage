@@ -5,7 +5,7 @@
     <parent>
         <artifactId>kafka-tiered-storage</artifactId>
         <groupId>com.pinterest.kafka.tieredstorage</groupId>
-        <version>1.0.0</version>
+        <version>1.0.1</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
@@ -21,6 +21,13 @@
             <groupId>com.pinterest.kafka.tieredstorage</groupId>
             <artifactId>ts-common</artifactId>
             <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.pinterest.kafka.tieredstorage</groupId>
+            <artifactId>ts-common</artifactId>
+            <version>${project.version}</version>
+            <classifier>tests</classifier>
+            <type>test-jar</type>
         </dependency>
         <dependency>
             <groupId>org.apache.logging.log4j</groupId>
@@ -40,7 +47,7 @@
         <dependency>
             <groupId>org.apache.kafka</groupId>
             <artifactId>kafka-clients</artifactId>
-            <version>2.3.1</version>
+            <version>${kafka.version}</version>
         </dependency>
         <dependency>
             <groupId>io.projectreactor.netty</groupId>
@@ -50,7 +57,7 @@
         <dependency>
             <groupId>org.apache.zookeeper</groupId>
             <artifactId>zookeeper</artifactId>
-            <version>3.4.14</version>
+            <version>3.6.3</version>
             <exclusions>
                 <exclusion>
                     <groupId>org.slf4j</groupId>
@@ -104,7 +111,7 @@
         <dependency>
             <groupId>org.apache.kafka</groupId>
             <artifactId>kafka_2.12</artifactId>
-            <version>2.3.1</version>
+            <version>${kafka.version}</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
