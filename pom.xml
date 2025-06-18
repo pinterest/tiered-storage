@@ -21,13 +21,15 @@
     </properties>
     <developers>
         <developer>
-            <id>jeff</id>
             <name>Jeff Xiang</name>
             <organization>Pinterest Logging Platform</organization>
         </developer>
         <developer>
-            <id>vahid</id>
             <name>Vahid Hashemian</name>
+            <organization>Pinterest Logging Platform</organization>
+        </developer>
+        <developer>
+            <name>Jesus Zuniga</name>
             <organization>Pinterest Logging Platform</organization>
         </developer>
     </developers>
@@ -45,17 +47,6 @@
         <url>https://github.com/pinterest/tiered-storage</url>
         <tag>HEAD</tag>
     </scm>
-
-<!--    <distributionManagement>-->
-<!--        <snapshotRepository>-->
-<!--            <id>ossrh</id>-->
-<!--            <url>https://oss.sonatype.org/content/repositories/snapshots</url>-->
-<!--        </snapshotRepository>-->
-<!--        <repository>-->
-<!--            <id>maven-central</id>-->
-<!--            <url>https://central.sonatype.com/publish/repository/maven-releases/</url>-->
-<!--        </repository>-->
-<!--    </distributionManagement>-->
     <dependencyManagement>
         <dependencies>
             <dependency>
@@ -121,17 +112,6 @@
                     </execution>
                 </executions>
             </plugin>
-<!--            <plugin>-->
-<!--                <groupId>org.sonatype.plugins</groupId>-->
-<!--                <artifactId>nexus-staging-maven-plugin</artifactId>-->
-<!--                <version>1.6.7</version>-->
-<!--                <extensions>true</extensions>-->
-<!--                <configuration>-->
-<!--                    <serverId>ossrh</serverId>-->
-<!--                    <nexusUrl>https://oss.sonatype.org/</nexusUrl>-->
-<!--                    <autoReleaseAfterClose>true</autoReleaseAfterClose>-->
-<!--                </configuration>-->
-<!--            </plugin>-->
             <plugin>
                 <groupId>org.sonatype.central</groupId>
                 <artifactId>central-publishing-maven-plugin</artifactId>
@@ -139,6 +119,7 @@
                 <extensions>true</extensions>
                 <configuration>
                     <publishingServerId>central</publishingServerId>
+                    <autoPublish>true</autoPublish>
                 </configuration>
             </plugin>
         </plugins>

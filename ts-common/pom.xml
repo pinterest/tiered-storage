@@ -10,6 +10,39 @@
         <relativePath>../pom.xml</relativePath>
     </parent>
 
+    <name>com.pinterest.kafka.tieredstorage:ts-common</name>
+    <description>Kafka Tiered Storage Common Library</description>
+    <url>https://github.com/pinterest/tiered-storage</url>
+
+    <developers>
+        <developer>
+            <name>Jeff Xiang</name>
+            <organization>Pinterest Logging Platform</organization>
+        </developer>
+        <developer>
+            <name>Vahid Hashemian</name>
+            <organization>Pinterest Logging Platform</organization>
+        </developer>
+        <developer>
+            <name>Jesus Zuniga</name>
+            <organization>Pinterest Logging Platform</organization>
+        </developer>
+    </developers>
+
+    <licenses>
+        <license>
+            <name>The Apache Software License, Version 2.0</name>
+            <url>http://www.apache.org/licenses/LICENSE-2.0.txt</url>
+        </license>
+    </licenses>
+
+    <scm>
+        <connection>scm:git:git@pinterest/psc.git</connection>
+        <developerConnection>scm:git:git@github.com:pinterest/tiered-storage.git</developerConnection>
+        <url>https://github.com/pinterest/tiered-storage</url>
+        <tag>HEAD</tag>
+    </scm>
+
     <artifactId>ts-common</artifactId>
 
     <properties>
