@@ -170,6 +170,10 @@ public class S3Utils {
         Map<Long, Integer> offsetToCountMap = new HashMap<>();
         for (S3Object s3Object : result.contents()) {
             String key = s3Object.key();
+            if (!key.endsWith(".log") && !key.endsWith(".index") && !key.endsWith(".timeindex")) {
+                LOG.debug(String.format("Skipping S3 object %s for topicPartition=%s in %s", key, topicPartition, s3Path));
+                continue;
+            }
             String filename = S3Utils.getFileNameFromKey(key);
             Long offset = Long.parseLong(filename.substring(0, filename.indexOf(".")));
             offsetToCountMap.put(offset, offsetToCountMap.getOrDefault(offset, 0) + 1);
