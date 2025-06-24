@@ -51,4 +51,22 @@ public class TestS3Utils extends TestS3Base {
         assertEquals(new HashSet<>(Collections.singletonList(20L)), map0.keySet());
         assertEquals(new HashSet<>(Arrays.asList(30L, 40L)), map1.keySet());
     }
+
+    @Test
+    void testGetSortedOffsetKeyMapWithDanglingObjectsEarliest() {
+        putEmptyObjectsDanglingEarliest(KAFKA_CLUSTER_ID, KAFKA_TOPIC, 0, 0L, 20L, 10L);
+
+        S3Utils.overrideS3Client(s3Client);
+        String metricsReporterClassName = NoOpMetricsReporter.class.getName();
+        MetricsConfiguration metricsConfiguration = new MetricsConfiguration(metricsReporterClassName, null, null);
+
+        TreeMap<Long, Triple<String, String, Long>> map0 = S3Utils.getSortedOffsetKeyMap(getS3BasePrefixWithCluster(), new TopicPartition(KAFKA_TOPIC, 0), S3Utils.getZeroPaddedOffset(0L), null, metricsConfiguration);
+        assertEquals(new HashSet<>(Arrays.asList(10L, 20L)), map0.keySet());
+
+        map0 = S3Utils.getSortedOffsetKeyMap(getS3BasePrefixWithCluster(), new TopicPartition(KAFKA_TOPIC, 0), S3Utils.getZeroPaddedOffset(5L), null, metricsConfiguration);
+        assertEquals(new HashSet<>(Arrays.asList(10L, 20L)), map0.keySet());
+
+        map0 = S3Utils.getSortedOffsetKeyMap(getS3BasePrefixWithCluster(), new TopicPartition(KAFKA_TOPIC, 0), S3Utils.getZeroPaddedOffset(33L), null, metricsConfiguration);
+        assertEquals(new HashSet<>(Collections.singletonList(20L)), map0.keySet());
+    }
 }

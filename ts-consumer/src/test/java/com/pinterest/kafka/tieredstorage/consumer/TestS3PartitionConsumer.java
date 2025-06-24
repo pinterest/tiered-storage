@@ -51,6 +51,17 @@ public class TestS3PartitionConsumer extends TestS3Base {
         assertEquals(50L, s3PartitionConsumer2.beginningOffset());
     }
 
+    @Test
+    void testBeginningOffsetDangling() {
+        putEmptyObjectsDanglingEarliest(KAFKA_CLUSTER_ID, KAFKA_TOPIC, 4, 100L, 1000L, 100L);
+        Properties properties = getConsumerProperties();
+        S3Utils.overrideS3Client(s3Client);
+        String metricsReporterClassName = NoOpMetricsReporter.class.getName();
+        MetricsConfiguration metricsConfiguration = new MetricsConfiguration(metricsReporterClassName, null, null);
+        S3PartitionConsumer<byte[], byte[]> s3PartitionConsumer = new S3PartitionConsumer<>(getS3BasePrefixWithCluster(), new TopicPartition(KAFKA_TOPIC, 4), CONSUMER_GROUP, properties, metricsConfiguration);
+        assertEquals(200L, s3PartitionConsumer.beginningOffset());  // should skip 100
+    }
+
     /**
      * Test that the correct end offset is retrieved. The end offset is the offset of the last log segment present in S3
      */
