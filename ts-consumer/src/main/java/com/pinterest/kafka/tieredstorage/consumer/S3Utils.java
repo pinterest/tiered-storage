@@ -15,9 +15,13 @@ import software.amazon.awssdk.services.s3.model.S3Exception;
 import software.amazon.awssdk.services.s3.model.S3Object;
 import software.amazon.awssdk.services.s3.paginators.ListObjectsV2Iterable;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
  * S3Utils is a utility class that provides helper methods for S3 operations.
@@ -163,11 +167,15 @@ public class S3Utils {
         ListObjectsV2Iterable result = listObjectsPaginated(topicPartition, requestBuilder.build(), metricsConfiguration);
         String lastSkippedKey = null;
         long lastSizeBytes = -1;
+        Map<Long, Integer> offsetToCountMap = new HashMap<>();
         for (S3Object s3Object : result.contents()) {
             String key = s3Object.key();
+            String filename = S3Utils.getFileNameFromKey(key);
+            Long offset = Long.parseLong(filename.substring(0, filename.indexOf(".")));
+            offsetToCountMap.put(offset, offsetToCountMap.getOrDefault(offset, 0) + 1);
             if (!key.endsWith(".log"))
                 continue;
-            if (S3Utils.getFileNameFromKey(key).compareTo(offsetKey) < 0) {
+            if (filename.compareTo(offsetKey) < 0) {
                 lastSkippedKey = key;
                 lastSizeBytes = s3Object.size();
                 continue;
@@ -190,7 +198,16 @@ public class S3Utils {
                     Triple.of(s3Path.getLeft(), lastSkippedKey, lastSizeBytes)
             );
         }
-        LOG.debug(String.format("Retrieved %s S3 objects [%s, %s].", sortedOffsetKeyMap.size(), sortedOffsetKeyMap.firstEntry(), sortedOffsetKeyMap.lastEntry()));
+        TreeSet<Long> validOffsets = offsetToCountMap.entrySet().stream().filter(entry -> entry.getValue() == 3 && sortedOffsetKeyMap.containsKey(entry.getKey()))
+                .map(Map.Entry::getKey)
+                .collect(Collectors.toCollection(TreeSet::new));
+        if (validOffsets.size() != sortedOffsetKeyMap.size()) {
+            LOG.warn(String.format("Found %s valid offsets but %s S3 objects for topicPartition=%s in %s. This may indicate dangling objects in S3. Dangling offsets: %s", validOffsets.size(), sortedOffsetKeyMap.size(),
+                    topicPartition, s3Path, sortedOffsetKeyMap.keySet().stream().filter(key -> !validOffsets.contains(key)).collect(Collectors.toList())));
+            // remove dangling objects
+            sortedOffsetKeyMap.keySet().retainAll(validOffsets);
+        }
+        LOG.info(String.format("Retrieved %s S3 objects [%s, %s].", sortedOffsetKeyMap.size(), sortedOffsetKeyMap.firstEntry(), sortedOffsetKeyMap.lastEntry()));
         return sortedOffsetKeyMap;
     }
     @VisibleForTesting

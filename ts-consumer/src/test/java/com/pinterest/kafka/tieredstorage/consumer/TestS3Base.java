@@ -124,6 +124,20 @@ public class TestS3Base extends TestBase {
         }
     }
 
+    protected void putEmptyObjectsDanglingEarliest(String cluster, String topic, int partition, long minOffset, long maxOffset, long numOffsetsPerFile) {
+        for (long i = minOffset; i <= maxOffset; i += numOffsetsPerFile) {
+            LOG.info(String.format("Put empty object to bucket=%s, key=%s", S3_BUCKET, getS3ObjectKey(cluster, topic, partition, i, TestS3Utils.FileType.LOG)));
+            s3Client.putObject(PutObjectRequest.builder().bucket(S3_BUCKET).key(getS3ObjectKey(cluster, topic, partition, i, TestS3Utils.FileType.LOG)).build(), RequestBody.empty());
+            if (i == minOffset) {
+                continue;
+            }
+            LOG.info(String.format("Put empty object to bucket=%s, key=%s", S3_BUCKET, getS3ObjectKey(cluster, topic, partition, i, TestS3Utils.FileType.INDEX)));
+            s3Client.putObject(PutObjectRequest.builder().bucket(S3_BUCKET).key(getS3ObjectKey(cluster, topic, partition, i, TestS3Utils.FileType.INDEX)).build(), RequestBody.empty());
+            LOG.info(String.format("Put empty object to bucket=%s, key=%s", S3_BUCKET, getS3ObjectKey(cluster, topic, partition, i, TestS3Utils.FileType.TIMEINDEX)));
+            s3Client.putObject(PutObjectRequest.builder().bucket(S3_BUCKET).key(getS3ObjectKey(cluster, topic, partition, i, TestS3Utils.FileType.TIMEINDEX)).build(), RequestBody.empty());
+        }
+    }
+
     protected void putEmptyObjects(String cluster, String topic, int partition, long minOffset, long maxOffset, long numOffsetsPerFile, int prefixEntropyNumDigits) {
         for (long i = minOffset; i <= maxOffset; i += numOffsetsPerFile) {
             s3Client.putObject(PutObjectRequest.builder().bucket(S3_BUCKET).key(getS3ObjectKey(cluster, topic, partition, i, TestS3Utils.FileType.INDEX, prefixEntropyNumDigits)).build(), RequestBody.empty());
