@@ -14,7 +14,6 @@ import java.util.Arrays;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
-import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -31,9 +30,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class MetricRegistryManager {
 
     private static final Logger LOG = LogManager.getLogger(MetricRegistryManager.class.getName());
-    private static final ThreadLocal<MetricRegistryManager> metricRegistryManager = ThreadLocal.withInitial(() -> null);
+    private static MetricRegistryManager metricRegistryManager = null;
     private final Map<String, MetricRegistryAndReporter> metricRegistryAndReporterMap;
-    private ScheduledExecutorService executorService;   // TODO: make this in step with metricRegistryManager
+    private ScheduledExecutorService executorService;
     private static final AtomicInteger refCount = new AtomicInteger(0);
     private final MetricsConfiguration metricsConfiguration;
     private static final long REPORTER_FREQUENCY_MS = 60000;  // TODO: make this configurable
@@ -53,13 +52,14 @@ public class MetricRegistryManager {
      * Shuts down the executorService and clears the metricRegistryAndReporter map if the refCount is 0.
      */
     public void shutdown() throws InterruptedException {
-        LOG.info("Shutting down executorService and clearing metricRegistryAndReporter map in thread=" + Thread.currentThread().getName());
-        if (executorService != null) {
-            executorService.shutdown();
-        }
-        metricRegistryAndReporterMap.clear();
-        metricRegistryManager.remove();
-        refCount.decrementAndGet();
+        // TODO: implement a proper shutdown procedure;
+        // shared singleton instance prevents graceful shutdown of
+        // executorService when there are multiple clients in the same JVM and someone calls shutdown()
+        // while others are still trying to emit metrics. That scenario results in a
+        // RejectedExecutionException
+
+        // we will skip shutdown for now since this is a singleton instance and will shutdown anyway
+        // upon process exit
     }
 
     /**
@@ -257,11 +257,11 @@ public class MetricRegistryManager {
      * @return MetricRegistryManager
      */
     public static MetricRegistryManager getInstance(MetricsConfiguration metricsConfiguration) {
-        if (metricRegistryManager.get() == null) {
-            LOG.info("Creating ThreadLocal<MetricRegistryManager> for thread=" + Thread.currentThread().getName() + " with new MetricRegistryManager instance. MetricsConfiguration=" + metricsConfiguration);
-            metricRegistryManager.set(new MetricRegistryManager(metricsConfiguration));
+        if (metricRegistryManager == null) {
+            LOG.info("Creating singleton MetricRegistryManager: metricsConfiguration=" + metricsConfiguration);
+            metricRegistryManager = new MetricRegistryManager(metricsConfiguration);
         }
-        return metricRegistryManager.get();
+        return metricRegistryManager;
     }
 
     @VisibleForTesting

@@ -23,13 +23,13 @@ public class TestMetrics {
         executorService.schedule(() -> {
             try {
                 MetricRegistryManager.getInstance(config).incrementCounter("test", 0, "test", "tag111=value");
-                assertEquals(2, MetricRegistryManager.getRefCount());   // new thread has incremented ref count
+                assertEquals(1, MetricRegistryManager.getRefCount());   // new thread has incremented ref count
                 MetricRegistryManager.getInstance(config).shutdown();
                 assertEquals(1, MetricRegistryManager.getRefCount());
                 MetricRegistryManager.getInstance(config).incrementCounter("test", 0, "test", "tag222=value");
-                assertEquals(2, MetricRegistryManager.getRefCount());   // new thread has incremented ref count
+                assertEquals(1, MetricRegistryManager.getRefCount());   // new thread has incremented ref count
                 MetricRegistryManager.getInstance(config).incrementCounter("test", 0, "test", "tag333=value");
-                assertEquals(2, MetricRegistryManager.getRefCount());   // new thread has incremented ref count
+                assertEquals(1, MetricRegistryManager.getRefCount());   // new thread has incremented ref count
                 MetricRegistryManager.getInstance(config).shutdown();
                 assertEquals(1, MetricRegistryManager.getRefCount());
                 isNewThreadShutdown.set(true);
@@ -47,7 +47,12 @@ public class TestMetrics {
         }
         assertEquals(1, MetricRegistryManager.getRefCount());
         MetricRegistryManager.getInstance(config).incrementCounter("test", 0, "test", "tag9=value");
+
+        // call shutdown
         MetricRegistryManager.getInstance(config).shutdown();
-        assertEquals(0, MetricRegistryManager.getRefCount());
+
+        // ensure that the rest of the ops can still run
+        MetricRegistryManager.getInstance(config).incrementCounter("test", 0, "test", "tag10=value");
+        MetricRegistryManager.getInstance(config).incrementCounter("test", 0, "test", "tag11=value");
     }
 }
