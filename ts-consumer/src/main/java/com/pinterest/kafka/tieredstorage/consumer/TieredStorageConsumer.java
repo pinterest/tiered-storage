@@ -84,6 +84,8 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
             throw new IllegalArgumentException("Tiered storage mode " + tieredStorageMode + " is not supported at the moment");
         }
 
+        // use thread-local metricRegistryManager for consumers for complete metrics in multi-consumer/multi-thread JVM's
+        properties.setProperty(MetricsConfiguration.METRICS_REGISTRY_MANAGER_THREAD_LOCAL_CONFIG, "true");
         this.metricsConfiguration = MetricsConfiguration.getMetricsConfiguration(properties);
 
         String offsetResetConfig = properties.getProperty(TieredStorageConsumerConfig.OFFSET_RESET_CONFIG, "latest").toLowerCase().trim();

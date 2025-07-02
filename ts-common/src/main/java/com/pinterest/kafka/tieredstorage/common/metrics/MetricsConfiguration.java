@@ -10,13 +10,17 @@ public class MetricsConfiguration {
     public static final String METRICS_REPORTER_CLASS_CONFIG = "metrics.reporter.class";
     public static final String METRICS_REPORTER_HOST_CONFIG = "metrics.reporter.host";
     public static final String METRICS_REPORTER_PORT_CONFIG = "metrics.reporter.port";
+    public static final String METRICS_REGISTRY_MANAGER_THREAD_LOCAL_CONFIG = "metrics.registry.manager.threadLocal";
+    private final boolean metricRegistryManagerThreadLocalEnabled;
     private final String metricsReporterClassName;
     private final String host;
     private final Integer port;
 
-    public MetricsConfiguration(String metricsReporterClassName,
+    public MetricsConfiguration(boolean metricRegistryManagerThreadLocalEnabled,
+                                String metricsReporterClassName,
                                 String host,
                                 Integer port) {
+        this.metricRegistryManagerThreadLocalEnabled = metricRegistryManagerThreadLocalEnabled;
         this.metricsReporterClassName = metricsReporterClassName;
         this.host = host;
         this.port = port;
@@ -31,6 +35,8 @@ public class MetricsConfiguration {
         String metricsReporterClassName = properties.containsKey(MetricsConfiguration.METRICS_REPORTER_CLASS_CONFIG) ?
                 properties.getProperty(MetricsConfiguration.METRICS_REPORTER_CLASS_CONFIG) :
                 NoOpMetricsReporter.class.getName();
+        boolean metricRegistryManagerThreadLocalEnabled = Boolean.parseBoolean(properties.getProperty(MetricsConfiguration.METRICS_REGISTRY_MANAGER_THREAD_LOCAL_CONFIG, "false"));
+
         String metricsHost = null;
         Integer metricsPort = null;
         if (!metricsReporterClassName.equals(NoOpMetricsReporter.class.getName())) {
@@ -43,7 +49,15 @@ public class MetricsConfiguration {
                         MetricsConfiguration.METRICS_REPORTER_HOST_CONFIG, MetricsConfiguration.METRICS_REPORTER_PORT_CONFIG, MetricsConfiguration.METRICS_REPORTER_CLASS_CONFIG, metricsReporterClassName));
             }
         }
-        return new MetricsConfiguration(metricsReporterClassName, metricsHost, metricsPort);
+        return new MetricsConfiguration(metricRegistryManagerThreadLocalEnabled, metricsReporterClassName, metricsHost, metricsPort);
+    }
+
+    /**
+     * Whether to use thread-local MetricRegistryManager
+     * @return true if thread-local MetricRegistryManager is enabled, false otherwise
+     */
+    public boolean getMetricRegistryManagerThreadLocalEnabled() {
+        return metricRegistryManagerThreadLocalEnabled;
     }
 
     /**
