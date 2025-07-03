@@ -24,7 +24,7 @@ public class TestS3Utils extends TestS3Base {
         putEmptyObjects(KAFKA_TOPIC, 1, 0L, 40L, 10L);
         S3Utils.overrideS3Client(s3Client);
         String metricsReporterClassName = NoOpMetricsReporter.class.getName();
-        MetricsConfiguration metricsConfiguration = new MetricsConfiguration(metricsReporterClassName, null, null);
+        MetricsConfiguration metricsConfiguration = new MetricsConfiguration(true, metricsReporterClassName, null, null);
 
         TreeMap<Long, Triple<String, String, Long>> map0 = S3Utils.getSortedOffsetKeyMap(getS3BasePrefixWithCluster(), new TopicPartition(KAFKA_TOPIC, 0), S3Utils.getZeroPaddedOffset(0L), null, metricsConfiguration);
         TreeMap<Long, Triple<String, String, Long>> map1 = S3Utils.getSortedOffsetKeyMap(getS3BasePrefixWithCluster(), new TopicPartition(KAFKA_TOPIC, 1), S3Utils.getZeroPaddedOffset(0L), null, metricsConfiguration);
@@ -58,7 +58,7 @@ public class TestS3Utils extends TestS3Base {
 
         S3Utils.overrideS3Client(s3Client);
         String metricsReporterClassName = NoOpMetricsReporter.class.getName();
-        MetricsConfiguration metricsConfiguration = new MetricsConfiguration(metricsReporterClassName, null, null);
+        MetricsConfiguration metricsConfiguration = new MetricsConfiguration(true, metricsReporterClassName, null, null);
 
         TreeMap<Long, Triple<String, String, Long>> map0 = S3Utils.getSortedOffsetKeyMap(getS3BasePrefixWithCluster(), new TopicPartition(KAFKA_TOPIC, 0), S3Utils.getZeroPaddedOffset(0L), null, metricsConfiguration);
         assertEquals(new HashSet<>(Arrays.asList(10L, 20L)), map0.keySet());

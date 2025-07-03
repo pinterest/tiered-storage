@@ -30,7 +30,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class MetricRegistryManager {
 
     private static final Logger LOG = LogManager.getLogger(MetricRegistryManager.class.getName());
-    private static MetricRegistryManager metricRegistryManager = null;
+    private static MetricRegistryManager singletonMetricRegistryManager = null;
+    private static final ThreadLocal<MetricRegistryManager> threadLocalMetricRegistryManager = ThreadLocal.withInitial(() -> null);
     private final Map<String, MetricRegistryAndReporter> metricRegistryAndReporterMap;
     private ScheduledExecutorService executorService;
     private static final AtomicInteger refCount = new AtomicInteger(0);
@@ -49,17 +50,18 @@ public class MetricRegistryManager {
     }
 
     /**
-     * Shuts down the executorService and clears the metricRegistryAndReporter map if the refCount is 0.
+     * Shuts down the executorService and clears the metricRegistryAndReporter map if it is thread-local
      */
     public void shutdown() throws InterruptedException {
-        // TODO: implement a proper shutdown procedure;
-        // shared singleton instance prevents graceful shutdown of
-        // executorService when there are multiple clients in the same JVM and someone calls shutdown()
-        // while others are still trying to emit metrics. That scenario results in a
-        // RejectedExecutionException
-
-        // we will skip shutdown for now since this is a singleton instance and will shutdown anyway
-        // upon process exit
+        if (metricsConfiguration.getMetricRegistryManagerThreadLocalEnabled()) {
+            LOG.info("Shutting down executorService and clearing metricRegistryAndReporter map in thread=" + Thread.currentThread().getName());
+            if (executorService != null) {
+                executorService.shutdown();
+            }
+            metricRegistryAndReporterMap.clear();
+            threadLocalMetricRegistryManager.remove();
+            refCount.decrementAndGet();
+        }
     }
 
     /**
@@ -257,11 +259,24 @@ public class MetricRegistryManager {
      * @return MetricRegistryManager
      */
     public static MetricRegistryManager getInstance(MetricsConfiguration metricsConfiguration) {
-        if (metricRegistryManager == null) {
-            LOG.info("Creating singleton MetricRegistryManager: metricsConfiguration=" + metricsConfiguration);
-            metricRegistryManager = new MetricRegistryManager(metricsConfiguration);
+        if (metricsConfiguration == null) {
+            throw new IllegalArgumentException("MetricsConfiguration cannot be null");
         }
-        return metricRegistryManager;
+
+        boolean isThreadLocal = metricsConfiguration.getMetricRegistryManagerThreadLocalEnabled();
+        if (isThreadLocal) {
+            if (threadLocalMetricRegistryManager.get() == null) {
+                LOG.info("Creating ThreadLocal<MetricRegistryManager> for thread=" + Thread.currentThread().getName() + " with new MetricRegistryManager instance. MetricsConfiguration=" + metricsConfiguration);
+                threadLocalMetricRegistryManager.set(new MetricRegistryManager(metricsConfiguration));
+            }
+            return threadLocalMetricRegistryManager.get();
+        } else {
+            if (singletonMetricRegistryManager == null) {
+                LOG.info("Creating singleton MetricRegistryManager: metricsConfiguration=" + metricsConfiguration);
+                singletonMetricRegistryManager = new MetricRegistryManager(metricsConfiguration);
+            }
+            return singletonMetricRegistryManager;
+        }
     }
 
     @VisibleForTesting

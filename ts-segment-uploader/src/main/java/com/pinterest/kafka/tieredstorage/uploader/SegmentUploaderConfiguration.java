@@ -104,6 +104,10 @@ public class SegmentUploaderConfiguration {
 
             metricsConfiguration = MetricsConfiguration.getMetricsConfiguration(properties);
 
+            if (metricsConfiguration.getMetricRegistryManagerThreadLocalEnabled()) {
+                throw new UnsupportedOperationException("Segment Uploader should not use thread-local MetricRegistryManager");
+            }
+
             LOG.info(String.format("Loaded SegmentUploaderConfiguration from file: %s", filename));
             LOG.info(String.format("Exclude regexes: %s", excludeRegexes));
             LOG.info(String.format("Include regexes: %s", includeRegexes));

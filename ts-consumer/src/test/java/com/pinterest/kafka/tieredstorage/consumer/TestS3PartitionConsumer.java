@@ -38,7 +38,7 @@ public class TestS3PartitionConsumer extends TestS3Base {
         Properties properties = getConsumerProperties();
         S3Utils.overrideS3Client(s3Client);
         String metricsReporterClassName = NoOpMetricsReporter.class.getName();
-        MetricsConfiguration metricsConfiguration = new MetricsConfiguration(metricsReporterClassName, null, null);
+        MetricsConfiguration metricsConfiguration = new MetricsConfiguration(true, metricsReporterClassName, null, null);
         S3PartitionConsumer<byte[], byte[]> s3PartitionConsumer = new S3PartitionConsumer<>(getS3BasePrefixWithCluster(), new TopicPartition(KAFKA_TOPIC, 4), CONSUMER_GROUP, properties, metricsConfiguration);
         assertEquals(100L, s3PartitionConsumer.beginningOffset());
         s3Client.deleteObject(DeleteObjectRequest.builder().bucket(S3_BUCKET).key(getS3ObjectKey(KAFKA_TOPIC, 4, 100L, FileType.LOG)).build());
@@ -57,7 +57,7 @@ public class TestS3PartitionConsumer extends TestS3Base {
         Properties properties = getConsumerProperties();
         S3Utils.overrideS3Client(s3Client);
         String metricsReporterClassName = NoOpMetricsReporter.class.getName();
-        MetricsConfiguration metricsConfiguration = new MetricsConfiguration(metricsReporterClassName, null, null);
+        MetricsConfiguration metricsConfiguration = new MetricsConfiguration(true, metricsReporterClassName, null, null);
         S3PartitionConsumer<byte[], byte[]> s3PartitionConsumer = new S3PartitionConsumer<>(getS3BasePrefixWithCluster(), new TopicPartition(KAFKA_TOPIC, 4), CONSUMER_GROUP, properties, metricsConfiguration);
         assertEquals(200L, s3PartitionConsumer.beginningOffset());  // should skip 100
     }
@@ -71,7 +71,7 @@ public class TestS3PartitionConsumer extends TestS3Base {
         Properties properties = getConsumerProperties();
         S3Utils.overrideS3Client(s3Client);
         String metricsReporterClassName = NoOpMetricsReporter.class.getName();
-        MetricsConfiguration metricsConfiguration = new MetricsConfiguration(metricsReporterClassName, null, null);
+        MetricsConfiguration metricsConfiguration = new MetricsConfiguration(true, metricsReporterClassName, null, null);
         S3PartitionConsumer<byte[], byte[]> s3PartitionConsumer = new S3PartitionConsumer<>(getS3BasePrefixWithCluster(), new TopicPartition(KAFKA_TOPIC, 9), CONSUMER_GROUP, properties, metricsConfiguration);
         assertEquals(1000L, s3PartitionConsumer.endOffset());
 
@@ -92,7 +92,7 @@ public class TestS3PartitionConsumer extends TestS3Base {
         S3Utils.overrideS3Client(s3Client);
         S3OffsetIndexHandler.overrideS3Client(s3Client);
         String metricsReporterClassName = NoOpMetricsReporter.class.getName();
-        MetricsConfiguration metricsConfiguration = new MetricsConfiguration(metricsReporterClassName, null, null);
+        MetricsConfiguration metricsConfiguration = new MetricsConfiguration(true, metricsReporterClassName, null, null);
         S3PartitionConsumer<String, String> s3PartitionConsumer = new S3PartitionConsumer<>(getS3BasePrefixWithCluster(), new TopicPartition("test_topic_a", 0), CONSUMER_GROUP, properties, metricsConfiguration,
                 new StringDeserializer(), new StringDeserializer());
         List<ConsumerRecord<String, String>> records;
