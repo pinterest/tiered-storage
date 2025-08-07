@@ -292,7 +292,9 @@ public class DirectoryTreeWatcher implements Runnable {
     }
 
     private void handleUploadException(UploadTask uploadTask, Throwable throwable, TopicPartition topicPartition) {
-        // Don't retry offset.wm files if upload fails and don't send to DLQ
+        // Avoid retrying offset.wm failed uploads to prevent retries from overwriting more recent watermark uploads.
+        // We will also skip sending failed offset.wm uploads to the DeadLetterQueue since they do not need any such handling.
+        // Disabling retries is safe because the next successful watermark upload will update the committed offset.
         if (uploadTask.getFullFilename().endsWith(".wm")) {
             LOG.warn(String.format("Watermark file upload failed: %s --> %s. Skipping retries and DLQ as configured. Error: %s", 
                     uploadTask.getAbsolutePath(), uploadTask.getUploadDestinationPathString(), throwable.getMessage()));
