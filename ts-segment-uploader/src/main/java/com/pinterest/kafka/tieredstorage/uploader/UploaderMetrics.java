@@ -35,4 +35,5 @@ public class UploaderMetrics {
     public static final String ENQUEUE_TO_UPLOAD_LATENCY_MS_METRIC = UPLOADER_METRIC_PREFIX + "." + "enqueue.to.upload.latency.ms";
     public static final String RETRY_MARKED_FOR_DELETION_COUNT_METRIC = UPLOADER_METRIC_PREFIX + "." + "retry.marked.for.deletion.count";
     public static final String WATCHER_LEADERSHIP_EXCEPTION_METRIC = UPLOADER_METRIC_PREFIX + "." + "watcher.leadership.exception";
+    public static final String WATERMARK_FILE_UPLOAD_ERROR_METRIC = UPLOADER_METRIC_PREFIX + "." + "watermark.file.upload.error";
 }
