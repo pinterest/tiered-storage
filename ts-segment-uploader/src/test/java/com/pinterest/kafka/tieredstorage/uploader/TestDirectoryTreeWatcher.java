@@ -17,6 +17,7 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -182,6 +183,163 @@ public class TestDirectoryTreeWatcher extends TestBase {
                 prevDifference = diff;
             }
         }
+    }
+
+    /**
+     * Test that offset.wm files don't retry on upload failure and are not sent to DLQ
+     */
+    @Test
+    void testOffsetWmFilesNoRetryAndNoDlq() throws Exception {
+        // override s3AsyncClient to have a very short timeout to force failures
+        MultiThreadedS3FileUploader.overrideS3Client(getS3AsyncClientWithCustomApiCallTimeout(1L));
+
+        Map<DirectoryTreeWatcher.UploadTask, Integer> taskToSendMap = new ConcurrentHashMap<>();
+
+        // set DLQ to track failed uploads
+        directoryTreeWatcher.setDeadLetterQueueHandler(new DeadLetterQueueHandler(config) {
+            @Override
+            protected void validateConfig() {
+                // no-op
+            }
+
+            @Override
+            public Future<Boolean> send(DirectoryTreeWatcher.UploadTask uploadTask, Throwable throwable) {
+                taskToSendMap.computeIfAbsent(uploadTask, k -> 0);
+                taskToSendMap.put(uploadTask, taskToSendMap.get(uploadTask) + 1);
+                return CompletableFuture.completedFuture(true);
+            }
+
+            @Override
+            public Collection<DirectoryTreeWatcher.UploadTask> poll() {
+                // no-op
+                return null;
+            }
+        });
+
+        StorageServiceEndpointProvider endpointProvider = new MockS3StorageServiceEndpointProvider();
+        endpointProvider.initialize(TEST_CLUSTER);
+
+        MultiThreadedS3FileUploader uploader = new MultiThreadedS3FileUploader(endpointProvider, config, environmentProvider);
+
+        // create an actual offset.wm file for testing
+        TopicPartition tp = new TopicPartition(TEST_TOPIC_A, 0);
+        String offset = "00000000000000000000";
+        
+        // Create a temporary offset.wm file
+        Path tempWatermarkFile = TEST_DATA_LOG_DIRECTORY_PATH.resolve("test_offset.wm");
+        try {
+            Files.write(tempWatermarkFile, offset.getBytes());
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to create test watermark file", e);
+        }
+        
+        DirectoryTreeWatcher.UploadTask watermarkUploadTask = new DirectoryTreeWatcher.UploadTask(
+                tp,
+                offset,
+                "test_offset.wm",
+                tempWatermarkFile
+        );
+
+        S3UploadCallback callback = new S3UploadCallback() {
+            @Override
+            public void onCompletion(DirectoryTreeWatcher.UploadTask uploadTask, long totalTimeMs, Throwable throwable, int statusCode) {
+                assertNotNull(throwable);
+                assertEquals(MultiThreadedS3FileUploader.UPLOAD_TIMEOUT_ERROR_CODE, statusCode);
+                assertTrue(Utils.isAssignableFromRecursive(throwable, CompletionException.class));
+                directoryTreeWatcher.handleUploadCallback(uploadTask, totalTimeMs, throwable, statusCode);
+            }
+        };
+
+        uploader.uploadFile(watermarkUploadTask, callback);
+
+        Thread.sleep(5000);    // wait for the upload to fail and be handled
+
+        // verify that the watermark file has 0 retries and was NOT sent to DLQ
+        assertEquals(0, watermarkUploadTask.getTries());
+        assertEquals(0, taskToSendMap.size()); // DLQ should not receive any tasks
+        assertFalse(taskToSendMap.containsKey(watermarkUploadTask)); // specifically verify watermark task not in DLQ
+
+        // clean up the temporary test file
+        try {
+            Files.deleteIfExists(tempWatermarkFile);
+        } catch (IOException e) {
+            // Log warning but don't fail the test
+            System.err.println("Failed to clean up test watermark file: " + e.getMessage());
+        }
+
+        // override the s3AsyncClient back to original
+        MultiThreadedS3FileUploader.overrideS3Client(s3AsyncClient);
+    }
+
+    /**
+     * Test that regular files (non-watermark) still go to DLQ after retry exhaustion
+     */
+    @Test
+    void testRegularFilesStillUseDlq() throws Exception {
+        // override s3AsyncClient to have a very short timeout to force failures
+        MultiThreadedS3FileUploader.overrideS3Client(getS3AsyncClientWithCustomApiCallTimeout(1L));
+
+        Map<DirectoryTreeWatcher.UploadTask, Integer> taskToSendMap = new ConcurrentHashMap<>();
+
+        // set DLQ to track failed uploads
+        directoryTreeWatcher.setDeadLetterQueueHandler(new DeadLetterQueueHandler(config) {
+            @Override
+            protected void validateConfig() {
+                // no-op
+            }
+
+            @Override
+            public Future<Boolean> send(DirectoryTreeWatcher.UploadTask uploadTask, Throwable throwable) {
+                taskToSendMap.computeIfAbsent(uploadTask, k -> 0);
+                taskToSendMap.put(uploadTask, taskToSendMap.get(uploadTask) + 1);
+                return CompletableFuture.completedFuture(true);
+            }
+
+            @Override
+            public Collection<DirectoryTreeWatcher.UploadTask> poll() {
+                // no-op
+                return null;
+            }
+        });
+
+        StorageServiceEndpointProvider endpointProvider = new MockS3StorageServiceEndpointProvider();
+        endpointProvider.initialize(TEST_CLUSTER);
+
+        MultiThreadedS3FileUploader uploader = new MultiThreadedS3FileUploader(endpointProvider, config, environmentProvider);
+
+        // create a regular .log file upload task
+        TopicPartition tp = new TopicPartition(TEST_TOPIC_A, 0);
+        String offset = "00000000000000000000";
+        
+        DirectoryTreeWatcher.UploadTask logUploadTask = new DirectoryTreeWatcher.UploadTask(
+                tp,
+                offset,
+                String.format("%s.log", offset),
+                TEST_DATA_LOG_DIRECTORY_PATH.resolve(Paths.get(String.format("%s.log", offset)))
+        );
+
+        S3UploadCallback callback = new S3UploadCallback() {
+            @Override
+            public void onCompletion(DirectoryTreeWatcher.UploadTask uploadTask, long totalTimeMs, Throwable throwable, int statusCode) {
+                assertNotNull(throwable);
+                assertEquals(MultiThreadedS3FileUploader.UPLOAD_TIMEOUT_ERROR_CODE, statusCode);
+                assertTrue(Utils.isAssignableFromRecursive(throwable, CompletionException.class));
+                directoryTreeWatcher.handleUploadCallback(uploadTask, totalTimeMs, throwable, statusCode);
+            }
+        };
+
+        uploader.uploadFile(logUploadTask, callback);
+
+        Thread.sleep(5000);    // wait for retries to exhaust and DLQ handling
+
+        // verify that the log file went through retries and was sent to DLQ
+        assertEquals(config.getUploadMaxRetries(), logUploadTask.getTries());
+        assertEquals(1, taskToSendMap.size()); // DLQ should receive the log file
+        assertTrue(taskToSendMap.containsKey(logUploadTask)); // verify log task was sent to DLQ
+        assertEquals(1, taskToSendMap.get(logUploadTask));
+
+        // override the s3AsyncClient back to original
+        MultiThreadedS3FileUploader.overrideS3Client(s3AsyncClient);
     }
 
     /**
