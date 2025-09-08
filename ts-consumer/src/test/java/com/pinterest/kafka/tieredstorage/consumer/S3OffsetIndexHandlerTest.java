@@ -81,14 +81,23 @@ class S3OffsetIndexHandlerTest {
     }
 
     @Test
-    @Disabled
     void testGetOffsetForTime() throws IOException {
         File file = new File(S3OffsetIndexHandlerTest.class.getClassLoader().getResource("log-files/timeindex_test/00000000000000022964.timeindex").getFile());
         try (FileInputStream fis = new FileInputStream(file);
              FileChannel channel = fis.getChannel()) {
+            System.out.println("available: " + channel.size());
+            System.out.println("available2: " + fis.available());
 
             final int ENTRY_SIZE = 12; // 8 bytes for timestamp, 4 for offset
             ByteBuffer buffer = ByteBuffer.allocate(ENTRY_SIZE);
+
+            channel.position(channel.size() - ENTRY_SIZE);
+            channel.read(buffer);
+            buffer.flip();
+
+            System.out.println("last entry timestamp = " + buffer.getLong() + " relativeOffset = " + buffer.getInt());
+            buffer.clear();
+            channel.position(0);
 
             int entryNum = 0;
             while (channel.read(buffer) == ENTRY_SIZE) {
@@ -103,5 +112,6 @@ class S3OffsetIndexHandlerTest {
                 buffer.clear();
             }
         }
+    
     }
 }

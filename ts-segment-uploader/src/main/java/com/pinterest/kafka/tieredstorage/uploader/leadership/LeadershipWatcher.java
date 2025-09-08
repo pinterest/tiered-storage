@@ -11,8 +11,11 @@ import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 
 import java.io.IOException;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationTargetException;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 
@@ -30,7 +33,7 @@ public abstract class LeadershipWatcher {
     protected final DirectoryTreeWatcher directoryTreeWatcher;
     protected final SegmentUploaderConfiguration config;
     protected final KafkaEnvironmentProvider environmentProvider;
-    protected final Set<TopicPartition> leadingPartitions = new HashSet<>();
+    protected final Set<TopicPartition> leadingPartitions = ConcurrentHashMap.newKeySet();
     private long lastPollTime = -1;
 
     public LeadershipWatcher(DirectoryTreeWatcher directoryTreeWatcher, SegmentUploaderConfiguration config, KafkaEnvironmentProvider environmentProvider) throws IOException, InterruptedException {
@@ -130,6 +133,14 @@ public abstract class LeadershipWatcher {
         );
     }
 
+    /**
+     * Get current leading partitions
+     * @return a copy of current leading partitions
+     */
+    public Set<TopicPartition> getLeadingPartitions() {
+        return new HashSet<>(this.leadingPartitions);
+    }
+
     public void start() throws Exception {
         applyCurrentState();
         executorService.scheduleAtFixedRate(() -> {
@@ -152,6 +163,14 @@ public abstract class LeadershipWatcher {
     public void stop() throws InterruptedException {
         executorService.shutdown();
         LOG.info("Stopped LeadershipWatcher");
+    }
+
+    public static LeadershipWatcher createLeadershipWatcher(DirectoryTreeWatcher directoryTreeWatcher, SegmentUploaderConfiguration config, KafkaEnvironmentProvider kafkaEnvironmentProvider) throws InvocationTargetException, InstantiationException, IllegalAccessException, ClassNotFoundException, NoSuchMethodException {
+        String leadershipWatcherClassName = config.getLeadershipWatcherClassName();
+        LOG.info(String.format("LeadershipWatcher: %s", leadershipWatcherClassName));
+        Constructor<? extends LeadershipWatcher> leadershipWatcherConstructor = Class.forName(leadershipWatcherClassName)
+                .asSubclass(LeadershipWatcher.class).getConstructor(DirectoryTreeWatcher.class, SegmentUploaderConfiguration.class, KafkaEnvironmentProvider.class);
+        return leadershipWatcherConstructor.newInstance(directoryTreeWatcher, config, kafkaEnvironmentProvider);
     }
 
 }

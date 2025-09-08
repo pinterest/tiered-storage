@@ -198,7 +198,7 @@ public class TestBase {
         }
     }
 
-    private static void deleteDirectory(Path directoryPath) throws IOException {
+    public static void deleteDirectory(Path directoryPath) throws IOException {
         if (Files.exists(directoryPath)) {
             Files.walk(directoryPath)
                     .sorted((path1, path2) -> -path1.compareTo(path2)) // Reverse order for proper deletion

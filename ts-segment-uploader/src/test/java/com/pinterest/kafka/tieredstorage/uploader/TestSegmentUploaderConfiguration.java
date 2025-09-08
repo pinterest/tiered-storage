@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import java.io.IOException;
 
 import static com.pinterest.kafka.tieredstorage.uploader.TestBase.getSegmentUploaderConfiguration;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -64,5 +65,16 @@ public class TestSegmentUploaderConfiguration {
         assertFalse(testSpecificExcludeConfiguration.isInInclusionCache("bar_topic"));
         assertTrue(testSpecificExcludeConfiguration.isInExclusionCache("foo_topic"));
         assertTrue(testSpecificExcludeConfiguration.shouldWatchTopic("test_topic_3"));
+    }
+
+    @Test
+    void testSegmentManagerConfigurations() throws IOException {
+        SegmentUploaderConfiguration config = getSegmentUploaderConfiguration("test-cluster-base");
+        assertEquals(1800, config.getSegmentManagerGcIntervalSeconds());
+        assertEquals(7200, config.getSegmentManagerGcRetentionSeconds("test_topic_c"));
+        assertEquals(3600, config.getSegmentManagerGcRetentionSeconds("test_topic_a"));
+        assertEquals(43200, config.getSegmentManagerGcRetentionSeconds("test_topic_b"));
+        assertEquals(7200, config.getSegmentManagerGcRetentionSeconds(null));
+        assertEquals(7200, config.getSegmentManagerGcRetentionSeconds(""));
     }
 }
