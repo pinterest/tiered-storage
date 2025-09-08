@@ -2,7 +2,6 @@ package com.pinterest.kafka.tieredstorage.uploader.dlq;
 
 import com.pinterest.kafka.tieredstorage.uploader.DirectoryTreeWatcher;
 import com.pinterest.kafka.tieredstorage.uploader.SegmentUploaderConfiguration;
-import org.apache.kafka.common.TopicPartition;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 

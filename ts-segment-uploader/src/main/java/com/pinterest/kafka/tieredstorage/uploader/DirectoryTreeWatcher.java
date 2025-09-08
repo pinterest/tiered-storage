@@ -1,9 +1,14 @@
 package com.pinterest.kafka.tieredstorage.uploader;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.pinterest.kafka.tieredstorage.common.metadata.TimeIndex;
+import com.pinterest.kafka.tieredstorage.common.metadata.TopicPartitionMetadata;
+import com.pinterest.kafka.tieredstorage.common.metadata.TopicPartitionMetadataUtil;
 import com.pinterest.kafka.tieredstorage.common.metrics.MetricRegistryManager;
 import com.pinterest.kafka.tieredstorage.uploader.dlq.DeadLetterQueueHandler;
 import com.pinterest.kafka.tieredstorage.uploader.leadership.LeadershipWatcher;
+import com.pinterest.kafka.tieredstorage.uploader.management.SegmentManager;
+
 import org.apache.kafka.common.TopicPartition;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
@@ -52,11 +57,12 @@ import java.util.regex.Pattern;
  */
 public class DirectoryTreeWatcher implements Runnable {
     private static final Logger LOG = LogManager.getLogger(DirectoryTreeWatcher.class);
-    private static final String[] MONITORED_EXTENSIONS = {".timeindex", ".index", ".log"};
+    public static final Set<String> MONITORED_EXTENSIONS = Set.of(".timeindex", ".index", ".log");
     private static final Pattern MONITORED_FILE_PATTERN = Pattern.compile("^\\d+(" + String.join("|", MONITORED_EXTENSIONS) + ")$");
     private static Map<TopicPartition, String> activeSegment;
     private static Map<TopicPartition, Set<String>> segmentsQueue;
     private static LeadershipWatcher leadershipWatcher;
+    private static SegmentManager segmentManager;
     private final Path topLevelPath;
     private final WatchService watchService;
     private final ConcurrentLinkedQueue<UploadTask> uploadTasks = new ConcurrentLinkedQueue<>();
@@ -86,6 +92,16 @@ public class DirectoryTreeWatcher implements Runnable {
     @VisibleForTesting
     protected static void unsetLeadershipWatcher() {
         leadershipWatcher = null;
+    }
+
+    public static void setSegmentManager(SegmentManager suppliedSegmentManager) {
+        if (segmentManager == null)
+            segmentManager = suppliedSegmentManager;
+    }
+
+    @VisibleForTesting
+    public static void unsetSegmentManager() {
+        segmentManager = null;
     }
 
     public DirectoryTreeWatcher(S3FileUploader s3FileUploader, SegmentUploaderConfiguration config, KafkaEnvironmentProvider environmentProvider) throws Exception {
@@ -142,6 +158,8 @@ public class DirectoryTreeWatcher implements Runnable {
         });
         LOG.info("Starting LeadershipWatcher: " + leadershipWatcher.getClass().getName());
         leadershipWatcher.start();
+        LOG.info("Starting SegmentManager: " + segmentManager.getClass().getName());
+        segmentManager.start();
         LOG.info("Submitting s3UploadHandler loop");
     }
 
@@ -202,6 +220,20 @@ public class DirectoryTreeWatcher implements Runnable {
                 dequeueSegment(topicPartition, filename);
                 uploadWatermarkFile(uploadTask, topicPartition, filename);
             } else if (uploadTask.getSubPath().endsWith(".wm")) {
+                long startTs = System.currentTimeMillis();
+                boolean metadataUpdateSuccess = updateMetadata(uploadTask);
+                if (metadataUpdateSuccess) {
+                    LOG.info("Successfully updated metadata for " + uploadTask.getTopicPartition());
+                    MetricRegistryManager.getInstance(config.getMetricsConfiguration()).updateCounter(
+                            topicPartition.topic(),
+                            topicPartition.partition(),
+                            UploaderMetrics.METADATA_UPDATE_LATENCY_MS_METRIC,
+                            System.currentTimeMillis() - startTs,
+                            "cluster=" + environmentProvider.clusterId(),
+                            "broker=" + environmentProvider.brokerId(),
+                            "update_reason=write"
+                    );
+                }
                 finalizeUpload(uploadTask, topicPartition);
             }
         }
@@ -245,6 +277,38 @@ public class DirectoryTreeWatcher implements Runnable {
         }
 
         tempFileGenerator.get().deleteWatermarkFile(WatermarkFileHandler.WATERMARK_DIRECTORY.resolve(uploadTask.getSubPath()));
+    }
+
+    private boolean updateMetadata(UploadTask uploadTask) {
+        if (segmentManager == null) {
+            LOG.warn("Skipping metadata update due to null SegmentManager");
+            return false;
+        }
+        boolean lockAcquired = TopicPartitionMetadataUtil.tryAcquireLock(uploadTask.getTopicPartition(), 5000L);
+        if (!lockAcquired) {
+            LOG.info("Failed to acquire lock for TopicPartitionMetadata for " + uploadTask.getTopicPartition() + ", skipping since it is best-effort");
+            return false;
+        }
+        try {
+            TopicPartitionMetadata tpMetadata;
+            try {
+                tpMetadata = segmentManager.getTopicPartitionMetadataFromStorage(uploadTask.getTopicPartition());
+                if (tpMetadata == null) {
+                    // create new metadata
+                    tpMetadata = new TopicPartitionMetadata(uploadTask.getTopicPartition());
+                    TimeIndex timeIndex = new TimeIndex(TimeIndex.TimeIndexType.TOPIC_PARTITION);
+                    tpMetadata.updateMetadata(TopicPartitionMetadata.TIMEINDEX_KEY, timeIndex);
+                }
+            } catch (IOException e) {
+                LOG.info("Failed to get TopicPartitionMetadata for " + uploadTask.getTopicPartition() + ", skipping since it is best-effort");
+                return false;
+            }
+            TimeIndex timeIndex = tpMetadata.getTimeIndex();
+            timeIndex.insertEntry(new TimeIndex.TimeIndexEntry(uploadTask.getSegmentLastModifiedTimestamp(), 0, Long.parseLong(uploadTask.getOffset())));
+            return segmentManager.writeMetadataToStorage(tpMetadata);
+        } finally {
+            TopicPartitionMetadataUtil.releaseLock(uploadTask.getTopicPartition());
+        }
     }
 
     private void uploadWatermarkFile(UploadTask uploadTask, TopicPartition topicPartition, String filename) {
