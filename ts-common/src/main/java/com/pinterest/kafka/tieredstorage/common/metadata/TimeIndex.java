@@ -198,7 +198,7 @@ public class TimeIndex implements MetadataJsonSerializable {
      * This is useful for finding the segment position for a given timestamp.
      * 
      * @param targetTimestamp the timestamp to search for
-     * @return the TimeIndexEntry with the largest timestamp <= targetTimestamp, or null if no such entry exists
+     * @return the TimeIndexEntry with the largest timestamp less than or equal to targetTimestamp, or null if no such entry exists
      */
     public TimeIndexEntry findEntryForTimestamp(long targetTimestamp) {
         // Use ConcurrentSkipListSet's floor method for efficient lookup
@@ -214,7 +214,7 @@ public class TimeIndex implements MetadataJsonSerializable {
      * This leverages the sorted nature of ConcurrentSkipListSet for O(log n) performance.
      * 
      * @param targetTimestamp the timestamp to search for
-     * @return the relative offset for the largest timestamp <= targetTimestamp, or -1 if no such entry exists
+     * @return the relative offset for the largest timestamp less than or equal to targetTimestamp, or -1 if no such entry exists
      */
     public int getRelativeOffsetForTimestamp(long targetTimestamp) {
         TimeIndexEntry entry = findEntryForTimestamp(targetTimestamp);
