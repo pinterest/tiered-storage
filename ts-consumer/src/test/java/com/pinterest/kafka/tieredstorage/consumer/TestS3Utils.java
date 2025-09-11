@@ -1,5 +1,7 @@
 package com.pinterest.kafka.tieredstorage.consumer;
 
+import com.pinterest.kafka.tieredstorage.common.SegmentUtils;
+import com.pinterest.kafka.tieredstorage.common.Utils;
 import com.pinterest.kafka.tieredstorage.common.metrics.MetricsConfiguration;
 import com.pinterest.kafka.tieredstorage.common.metrics.NoOpMetricsReporter;
 import org.apache.commons.lang3.tuple.Triple;
@@ -26,28 +28,28 @@ public class TestS3Utils extends TestS3Base {
         String metricsReporterClassName = NoOpMetricsReporter.class.getName();
         MetricsConfiguration metricsConfiguration = new MetricsConfiguration(true, metricsReporterClassName, null, null);
 
-        TreeMap<Long, Triple<String, String, Long>> map0 = S3Utils.getSortedOffsetKeyMap(getS3BasePrefixWithCluster(), new TopicPartition(KAFKA_TOPIC, 0), S3Utils.getZeroPaddedOffset(0L), null, metricsConfiguration);
-        TreeMap<Long, Triple<String, String, Long>> map1 = S3Utils.getSortedOffsetKeyMap(getS3BasePrefixWithCluster(), new TopicPartition(KAFKA_TOPIC, 1), S3Utils.getZeroPaddedOffset(0L), null, metricsConfiguration);
+        TreeMap<Long, Triple<String, String, Long>> map0 = S3Utils.getSortedOffsetKeyMap(getS3BasePrefixWithCluster(), new TopicPartition(KAFKA_TOPIC, 0), Utils.getZeroPaddedOffset(0L), null, metricsConfiguration);
+        TreeMap<Long, Triple<String, String, Long>> map1 = S3Utils.getSortedOffsetKeyMap(getS3BasePrefixWithCluster(), new TopicPartition(KAFKA_TOPIC, 1), Utils.getZeroPaddedOffset(0L), null, metricsConfiguration);
         assertEquals(new HashSet<>(Arrays.asList(0L, 10L, 20L)), map0.keySet());
         assertEquals(new HashSet<>(Arrays.asList(0L, 10L, 20L, 30L, 40L)), map1.keySet());
 
-        map0 = S3Utils.getSortedOffsetKeyMap(getS3BasePrefixWithCluster(), new TopicPartition(KAFKA_TOPIC, 0), S3Utils.getZeroPaddedOffset(5L), null, metricsConfiguration);
-        map1 = S3Utils.getSortedOffsetKeyMap(getS3BasePrefixWithCluster(), new TopicPartition(KAFKA_TOPIC, 1), S3Utils.getZeroPaddedOffset(15L), null, metricsConfiguration);
+        map0 = S3Utils.getSortedOffsetKeyMap(getS3BasePrefixWithCluster(), new TopicPartition(KAFKA_TOPIC, 0), Utils.getZeroPaddedOffset(5L), null, metricsConfiguration);
+        map1 = S3Utils.getSortedOffsetKeyMap(getS3BasePrefixWithCluster(), new TopicPartition(KAFKA_TOPIC, 1), Utils.getZeroPaddedOffset(15L), null, metricsConfiguration);
         assertEquals(new HashSet<>(Arrays.asList(0L, 10L, 20L)), map0.keySet());
         assertEquals(new HashSet<>(Arrays.asList(10L, 20L, 30L, 40L)), map1.keySet());
 
-        map0 = S3Utils.getSortedOffsetKeyMap(getS3BasePrefixWithCluster(), new TopicPartition(KAFKA_TOPIC, 0), S3Utils.getZeroPaddedOffset(20L), null, metricsConfiguration);
-        map1 = S3Utils.getSortedOffsetKeyMap(getS3BasePrefixWithCluster(), new TopicPartition(KAFKA_TOPIC, 1), S3Utils.getZeroPaddedOffset(30L), null, metricsConfiguration);
+        map0 = S3Utils.getSortedOffsetKeyMap(getS3BasePrefixWithCluster(), new TopicPartition(KAFKA_TOPIC, 0), Utils.getZeroPaddedOffset(20L), null, metricsConfiguration);
+        map1 = S3Utils.getSortedOffsetKeyMap(getS3BasePrefixWithCluster(), new TopicPartition(KAFKA_TOPIC, 1), Utils.getZeroPaddedOffset(30L), null, metricsConfiguration);
         assertEquals(new HashSet<>(Arrays.asList(10L, 20L)), map0.keySet());
         assertEquals(new HashSet<>(Arrays.asList(20L, 30L, 40L)), map1.keySet());
 
-        map0 = S3Utils.getSortedOffsetKeyMap(getS3BasePrefixWithCluster(), new TopicPartition(KAFKA_TOPIC, 0), S3Utils.getZeroPaddedOffset(33L), null, metricsConfiguration);
-        map1 = S3Utils.getSortedOffsetKeyMap(getS3BasePrefixWithCluster(), new TopicPartition(KAFKA_TOPIC, 1), S3Utils.getZeroPaddedOffset(45L), null, metricsConfiguration);
+        map0 = S3Utils.getSortedOffsetKeyMap(getS3BasePrefixWithCluster(), new TopicPartition(KAFKA_TOPIC, 0), Utils.getZeroPaddedOffset(33L), null, metricsConfiguration);
+        map1 = S3Utils.getSortedOffsetKeyMap(getS3BasePrefixWithCluster(), new TopicPartition(KAFKA_TOPIC, 1), Utils.getZeroPaddedOffset(45L), null, metricsConfiguration);
         assertEquals(new HashSet<>(Collections.singletonList(20L)), map0.keySet());
         assertEquals(new HashSet<>(Collections.singletonList(40L)), map1.keySet());
 
-        map0 = S3Utils.getSortedOffsetKeyMap(getS3BasePrefixWithCluster(), new TopicPartition(KAFKA_TOPIC, 0), S3Utils.getZeroPaddedOffset(0L), getS3ObjectKey(KAFKA_TOPIC, 0, 10L, FileType.LOG), metricsConfiguration);
-        map1 = S3Utils.getSortedOffsetKeyMap(getS3BasePrefixWithCluster(), new TopicPartition(KAFKA_TOPIC, 1), S3Utils.getZeroPaddedOffset(0L), getS3ObjectKey(KAFKA_TOPIC, 1, 20L, FileType.LOG), metricsConfiguration);
+        map0 = S3Utils.getSortedOffsetKeyMap(getS3BasePrefixWithCluster(), new TopicPartition(KAFKA_TOPIC, 0), Utils.getZeroPaddedOffset(0L), getS3ObjectKey(KAFKA_TOPIC, 0, 10L, SegmentUtils.SegmentFileType.LOG), metricsConfiguration);
+        map1 = S3Utils.getSortedOffsetKeyMap(getS3BasePrefixWithCluster(), new TopicPartition(KAFKA_TOPIC, 1), Utils.getZeroPaddedOffset(0L), getS3ObjectKey(KAFKA_TOPIC, 1, 20L, SegmentUtils.SegmentFileType.LOG), metricsConfiguration);
         assertEquals(new HashSet<>(Collections.singletonList(20L)), map0.keySet());
         assertEquals(new HashSet<>(Arrays.asList(30L, 40L)), map1.keySet());
     }
@@ -60,13 +62,13 @@ public class TestS3Utils extends TestS3Base {
         String metricsReporterClassName = NoOpMetricsReporter.class.getName();
         MetricsConfiguration metricsConfiguration = new MetricsConfiguration(true, metricsReporterClassName, null, null);
 
-        TreeMap<Long, Triple<String, String, Long>> map0 = S3Utils.getSortedOffsetKeyMap(getS3BasePrefixWithCluster(), new TopicPartition(KAFKA_TOPIC, 0), S3Utils.getZeroPaddedOffset(0L), null, metricsConfiguration);
+        TreeMap<Long, Triple<String, String, Long>> map0 = S3Utils.getSortedOffsetKeyMap(getS3BasePrefixWithCluster(), new TopicPartition(KAFKA_TOPIC, 0), Utils.getZeroPaddedOffset(0L), null, metricsConfiguration);
         assertEquals(new HashSet<>(Arrays.asList(10L, 20L)), map0.keySet());
 
-        map0 = S3Utils.getSortedOffsetKeyMap(getS3BasePrefixWithCluster(), new TopicPartition(KAFKA_TOPIC, 0), S3Utils.getZeroPaddedOffset(5L), null, metricsConfiguration);
+        map0 = S3Utils.getSortedOffsetKeyMap(getS3BasePrefixWithCluster(), new TopicPartition(KAFKA_TOPIC, 0), Utils.getZeroPaddedOffset(5L), null, metricsConfiguration);
         assertEquals(new HashSet<>(Arrays.asList(10L, 20L)), map0.keySet());
 
-        map0 = S3Utils.getSortedOffsetKeyMap(getS3BasePrefixWithCluster(), new TopicPartition(KAFKA_TOPIC, 0), S3Utils.getZeroPaddedOffset(33L), null, metricsConfiguration);
+        map0 = S3Utils.getSortedOffsetKeyMap(getS3BasePrefixWithCluster(), new TopicPartition(KAFKA_TOPIC, 0), Utils.getZeroPaddedOffset(33L), null, metricsConfiguration);
         assertEquals(new HashSet<>(Collections.singletonList(20L)), map0.keySet());
     }
 }

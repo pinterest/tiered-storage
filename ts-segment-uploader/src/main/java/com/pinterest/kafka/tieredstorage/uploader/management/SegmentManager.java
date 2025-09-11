@@ -85,11 +85,29 @@ public abstract class SegmentManager {
                 // first update metadata
                 int removed = timeIndex.removeEntriesBeforeBaseOffsetInclusive(cutoffOffset);
                 LOG.info(String.format("Removed %s entries from timeindex for topicPartition=%s", removed, leadingPartition));
+                long metadataWriteStartTs = System.currentTimeMillis();
                 boolean metadataUpdateSuccess = writeMetadataToStorage(tpMetadata);
                 if (metadataUpdateSuccess) {
+                    MetricRegistryManager.getInstance(config.getMetricsConfiguration()).updateCounter(
+                            leadingPartition.topic(),
+                            leadingPartition.partition(),
+                            UploaderMetrics.METADATA_UPDATE_LATENCY_MS_METRIC,
+                            System.currentTimeMillis() - metadataWriteStartTs,
+                            "cluster=" + environmentProvider.clusterId(),
+                            "broker=" + environmentProvider.brokerId(),
+                            "update_reason=gc"
+                    );
                     LOG.info("Successfully updated TopicPartitionMetadata for " + leadingPartition);
                 } else {
                     LOG.warn("Failed to update TopicPartitionMetadata for " + leadingPartition + ", skipping since it is best-effort");
+                    MetricRegistryManager.getInstance(config.getMetricsConfiguration()).incrementCounter(
+                            leadingPartition.topic(),
+                            leadingPartition.partition(),
+                            UploaderMetrics.METADATA_UPDATE_FAILURE_COUNT_METRIC,
+                            "cluster=" + environmentProvider.clusterId(),
+                            "broker=" + environmentProvider.brokerId(),
+                            "update_reason=gc"
+                    );
                 }
             } finally {
                 TopicPartitionMetadataUtil.releaseLock(leadingPartition);

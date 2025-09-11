@@ -28,7 +28,8 @@ public class WatermarkFileHandler {
             Path directoryPath = WATERMARK_DIRECTORY.resolve(topicPartition);
             File directory = directoryPath.toFile();
             if (!directory.exists()) {
-                if (!directory.mkdirs())
+                if (!directory.mkdirs() && !directory.exists())
+                    // check again if directory.exists() in case of contending threads creating it
                     throw new IOException("Could not create directory " + directory);
             }
             filePath = directoryPath.resolve(content + ".wm");

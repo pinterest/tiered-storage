@@ -858,13 +858,13 @@ public class TestTieredStorageConsumerIntegration extends TestS3Base {
     void testBeginningOffsetsKafka(TieredStorageConsumer.TieredStorageMode mode) throws IOException, ClassNotFoundException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException, InterruptedException {
         tsConsumer = getTieredStorageConsumer(mode);
 
-        putEmptyObjects(TEST_CLUSTER, TEST_TOPIC_A, 0, 100, 1000, 100);
-        putEmptyObjects(TEST_CLUSTER, TEST_TOPIC_A, 1, 200, 1000, 100);
-        putEmptyObjects(TEST_CLUSTER, TEST_TOPIC_A, 2, 300, 1000, 100);
+        putEmptyObjects(TEST_CLUSTER, TEST_TOPIC_A, 0, 100, 500, 100);
+        putEmptyObjects(TEST_CLUSTER, TEST_TOPIC_A, 1, 200, 500, 100);
+        putEmptyObjects(TEST_CLUSTER, TEST_TOPIC_A, 2, 300, 500, 100);
 
-        writeExpectedRecordFormatTestData(CommonTestUtils.RecordContentType.KAFKA, sharedKafkaTestResource, TEST_TOPIC_A, 0, 1000);
-        writeExpectedRecordFormatTestData(CommonTestUtils.RecordContentType.KAFKA, sharedKafkaTestResource, TEST_TOPIC_A, 1, 1000);
-        writeExpectedRecordFormatTestData(CommonTestUtils.RecordContentType.KAFKA, sharedKafkaTestResource, TEST_TOPIC_A, 2, 1000);
+        writeExpectedRecordFormatTestData(CommonTestUtils.RecordContentType.KAFKA, sharedKafkaTestResource, TEST_TOPIC_A, 0, 500);
+        writeExpectedRecordFormatTestData(CommonTestUtils.RecordContentType.KAFKA, sharedKafkaTestResource, TEST_TOPIC_A, 1, 500);
+        writeExpectedRecordFormatTestData(CommonTestUtils.RecordContentType.KAFKA, sharedKafkaTestResource, TEST_TOPIC_A, 2, 500);
 
         TopicPartition tp0 = new TopicPartition(TEST_TOPIC_A, 0);
         TopicPartition tp1 = new TopicPartition(TEST_TOPIC_A, 1);

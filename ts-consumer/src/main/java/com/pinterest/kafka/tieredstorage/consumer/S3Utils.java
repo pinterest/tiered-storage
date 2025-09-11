@@ -1,6 +1,8 @@
 package com.pinterest.kafka.tieredstorage.consumer;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.pinterest.kafka.tieredstorage.common.SegmentUtils;
+import com.pinterest.kafka.tieredstorage.common.Utils;
 import com.pinterest.kafka.tieredstorage.common.metrics.MetricRegistryManager;
 import com.pinterest.kafka.tieredstorage.common.metrics.MetricsConfiguration;
 import org.apache.commons.lang3.tuple.Pair;
@@ -32,19 +34,6 @@ public class S3Utils {
     private static final String S3_PATH_REGEX = "s3:\\/\\/([^\\/]+)\\/(.+)";
     private static final Pattern pattern = Pattern.compile(S3_PATH_REGEX, Pattern.MULTILINE);
     private static S3Client s3Client = S3Client.builder().region(REGION).build();
-
-    enum KafkaFileType {
-        LOG, INDEX, TIMEINDEX
-    };
-
-    /**
-     * Returns a zero-padded offset string in the same format as Kafka's log segment file names
-     * @param offset
-     * @return zero-padded offset string
-     */
-    public static String getZeroPaddedOffset(long offset) {
-        return String.format("%020d", offset);
-    }
 
     /**
      * Returns the file name from the S3 key
@@ -82,7 +71,7 @@ public class S3Utils {
         return Triple.of(
                 bucket,
                 String.format("%s%s-%d/", prefix, topic, partition),
-                offset == null ? "" : getZeroPaddedOffset(offset)
+                offset == null ? "" : Utils.getZeroPaddedOffset(offset)
         );
     }
 
@@ -170,14 +159,14 @@ public class S3Utils {
         Map<Long, Integer> offsetToCountMap = new HashMap<>();
         for (S3Object s3Object : result.contents()) {
             String key = s3Object.key();
-            if (!key.endsWith(".log") && !key.endsWith(".index") && !key.endsWith(".timeindex")) {
+            if (!SegmentUtils.isSegmentFile(key)) {
                 LOG.debug(String.format("Skipping S3 object %s for topicPartition=%s in %s", key, topicPartition, s3Path));
                 continue;
             }
             String filename = S3Utils.getFileNameFromKey(key);
             Long offset = Long.parseLong(filename.substring(0, filename.indexOf(".")));
             offsetToCountMap.put(offset, offsetToCountMap.getOrDefault(offset, 0) + 1);
-            if (!key.endsWith(".log"))
+            if (!key.endsWith(SegmentUtils.getFileTypeSuffix(SegmentUtils.SegmentFileType.LOG)))
                 continue;
             if (filename.compareTo(offsetKey) < 0) {
                 lastSkippedKey = key;

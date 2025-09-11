@@ -1,5 +1,6 @@
 package com.pinterest.kafka.tieredstorage.uploader.management;
 
+import com.pinterest.kafka.tieredstorage.common.SegmentUtils;
 import com.pinterest.kafka.tieredstorage.common.Utils;
 import com.pinterest.kafka.tieredstorage.common.discovery.StorageServiceEndpointProvider;
 import com.pinterest.kafka.tieredstorage.common.discovery.s3.MockS3StorageServiceEndpointProvider;
@@ -90,9 +91,9 @@ public class TestSegmentManager extends TestBase {
         Set<Long> offsets = Set.of(0L, 100L, 200L, 300L, 400L, 500L);
         for (long offset : offsets) {
             // write empty segments
-            Files.write(Paths.get(DIRECTORY.getPath(), tp.toString(), String.format("%020d", offset) + ".log"), "".getBytes(StandardCharsets.UTF_8));
-            Files.write(Paths.get(DIRECTORY.getPath(), tp.toString(), String.format("%020d", offset) + ".timeindex"), "".getBytes(StandardCharsets.UTF_8));
-            Files.write(Paths.get(DIRECTORY.getPath(), tp.toString(), String.format("%020d", offset) + ".index"), "".getBytes(StandardCharsets.UTF_8));
+            Files.write(Paths.get(DIRECTORY.getPath(), tp.toString(), String.format("%020d", offset) + SegmentUtils.getFileTypeSuffix(SegmentUtils.SegmentFileType.LOG)), "".getBytes(StandardCharsets.UTF_8));
+            Files.write(Paths.get(DIRECTORY.getPath(), tp.toString(), String.format("%020d", offset) + SegmentUtils.getFileTypeSuffix(SegmentUtils.SegmentFileType.TIMEINDEX)), "".getBytes(StandardCharsets.UTF_8));
+            Files.write(Paths.get(DIRECTORY.getPath(), tp.toString(), String.format("%020d", offset) + SegmentUtils.getFileTypeSuffix(SegmentUtils.SegmentFileType.INDEX)), "".getBytes(StandardCharsets.UTF_8));
         }
         Files.write(Paths.get(DIRECTORY.getPath(), tp.toString(), "offset.wm"), "".getBytes(StandardCharsets.UTF_8));
 
@@ -117,15 +118,15 @@ public class TestSegmentManager extends TestBase {
         assertEquals(3 * 3 + 2, filesAfterGc.size());
         assertTrue(filesAfterGc.stream().anyMatch(f -> f.getName().equals("offset.wm")));
         assertTrue(filesAfterGc.stream().anyMatch(f -> f.getName().equals("_metadata")));
-        assertTrue(filesAfterGc.stream().anyMatch(f -> f.getName().equals(String.format("%020d", 300L) + ".log")));
-        assertTrue(filesAfterGc.stream().anyMatch(f -> f.getName().equals(String.format("%020d", 300L) + ".index")));
-        assertTrue(filesAfterGc.stream().anyMatch(f -> f.getName().equals(String.format("%020d", 300L) + ".timeindex")));
-        assertTrue(filesAfterGc.stream().anyMatch(f -> f.getName().equals(String.format("%020d", 400L) + ".log")));
-        assertTrue(filesAfterGc.stream().anyMatch(f -> f.getName().equals(String.format("%020d", 400L) + ".index")));
-        assertTrue(filesAfterGc.stream().anyMatch(f -> f.getName().equals(String.format("%020d", 400L) + ".timeindex")));
-        assertTrue(filesAfterGc.stream().anyMatch(f -> f.getName().equals(String.format("%020d", 500L) + ".log")));
-        assertTrue(filesAfterGc.stream().anyMatch(f -> f.getName().equals(String.format("%020d", 500L) + ".index")));
-        assertTrue(filesAfterGc.stream().anyMatch(f -> f.getName().equals(String.format("%020d", 500L) + ".timeindex")));
+        assertTrue(filesAfterGc.stream().anyMatch(f -> f.getName().equals(String.format("%020d", 300L) + SegmentUtils.getFileTypeSuffix(SegmentUtils.SegmentFileType.LOG))));
+        assertTrue(filesAfterGc.stream().anyMatch(f -> f.getName().equals(String.format("%020d", 300L) + SegmentUtils.getFileTypeSuffix(SegmentUtils.SegmentFileType.INDEX))));
+        assertTrue(filesAfterGc.stream().anyMatch(f -> f.getName().equals(String.format("%020d", 300L) + SegmentUtils.getFileTypeSuffix(SegmentUtils.SegmentFileType.TIMEINDEX))));
+        assertTrue(filesAfterGc.stream().anyMatch(f -> f.getName().equals(String.format("%020d", 400L) + SegmentUtils.getFileTypeSuffix(SegmentUtils.SegmentFileType.LOG))));
+        assertTrue(filesAfterGc.stream().anyMatch(f -> f.getName().equals(String.format("%020d", 400L) + SegmentUtils.getFileTypeSuffix(SegmentUtils.SegmentFileType.INDEX))));
+        assertTrue(filesAfterGc.stream().anyMatch(f -> f.getName().equals(String.format("%020d", 400L) + SegmentUtils.getFileTypeSuffix(SegmentUtils.SegmentFileType.TIMEINDEX))));
+        assertTrue(filesAfterGc.stream().anyMatch(f -> f.getName().equals(String.format("%020d", 500L) + SegmentUtils.getFileTypeSuffix(SegmentUtils.SegmentFileType.LOG))));
+        assertTrue(filesAfterGc.stream().anyMatch(f -> f.getName().equals(String.format("%020d", 500L) + SegmentUtils.getFileTypeSuffix(SegmentUtils.SegmentFileType.INDEX))));
+        assertTrue(filesAfterGc.stream().anyMatch(f -> f.getName().equals(String.format("%020d", 500L) + SegmentUtils.getFileTypeSuffix(SegmentUtils.SegmentFileType.TIMEINDEX))));
 
         assertFalse(TopicPartitionMetadataUtil.isLocked(tp));
     }
@@ -143,9 +144,9 @@ public class TestSegmentManager extends TestBase {
         Set<Long> offsets = Set.of(0L, 100L, 200L, 300L, 400L, 500L);
         for (long offset : offsets) {
             // write empty segments
-            Files.write(Paths.get(DIRECTORY.getPath(), tp.toString(), String.format("%020d", offset) + ".log"), "".getBytes(StandardCharsets.UTF_8));
-            Files.write(Paths.get(DIRECTORY.getPath(), tp.toString(), String.format("%020d", offset) + ".timeindex"), "".getBytes(StandardCharsets.UTF_8));
-            Files.write(Paths.get(DIRECTORY.getPath(), tp.toString(), String.format("%020d", offset) + ".index"), "".getBytes(StandardCharsets.UTF_8));
+            Files.write(Paths.get(DIRECTORY.getPath(), tp.toString(), String.format("%020d", offset) + SegmentUtils.getFileTypeSuffix(SegmentUtils.SegmentFileType.LOG)), "".getBytes(StandardCharsets.UTF_8));
+            Files.write(Paths.get(DIRECTORY.getPath(), tp.toString(), String.format("%020d", offset) + SegmentUtils.getFileTypeSuffix(SegmentUtils.SegmentFileType.TIMEINDEX)), "".getBytes(StandardCharsets.UTF_8));
+            Files.write(Paths.get(DIRECTORY.getPath(), tp.toString(), String.format("%020d", offset) + SegmentUtils.getFileTypeSuffix(SegmentUtils.SegmentFileType.INDEX)), "".getBytes(StandardCharsets.UTF_8));
         }
         Files.write(Paths.get(DIRECTORY.getPath(), tp.toString(), "offset.wm"), "".getBytes(StandardCharsets.UTF_8));
 
@@ -190,9 +191,9 @@ public class TestSegmentManager extends TestBase {
         Set<Long> offsets = Set.of(0L, 100L, 200L, 300L, 400L, 500L);
         for (long offset : offsets) {
             // write empty segments
-            Files.write(Paths.get(DIRECTORY.getPath(), tp.toString(), String.format("%020d", offset) + ".log"), "".getBytes(StandardCharsets.UTF_8));
-            Files.write(Paths.get(DIRECTORY.getPath(), tp.toString(), String.format("%020d", offset) + ".timeindex"), "".getBytes(StandardCharsets.UTF_8));
-            Files.write(Paths.get(DIRECTORY.getPath(), tp.toString(), String.format("%020d", offset) + ".index"), "".getBytes(StandardCharsets.UTF_8));
+            Files.write(Paths.get(DIRECTORY.getPath(), tp.toString(), String.format("%020d", offset) + SegmentUtils.getFileTypeSuffix(SegmentUtils.SegmentFileType.LOG)), "".getBytes(StandardCharsets.UTF_8));
+            Files.write(Paths.get(DIRECTORY.getPath(), tp.toString(), String.format("%020d", offset) + SegmentUtils.getFileTypeSuffix(SegmentUtils.SegmentFileType.TIMEINDEX)), "".getBytes(StandardCharsets.UTF_8));
+            Files.write(Paths.get(DIRECTORY.getPath(), tp.toString(), String.format("%020d", offset) + SegmentUtils.getFileTypeSuffix(SegmentUtils.SegmentFileType.INDEX)), "".getBytes(StandardCharsets.UTF_8));
         }
         Files.write(Paths.get(DIRECTORY.getPath(), tp.toString(), "offset.wm"), "".getBytes(StandardCharsets.UTF_8));
 

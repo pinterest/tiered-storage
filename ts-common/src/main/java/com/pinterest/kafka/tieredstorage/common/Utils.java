@@ -92,4 +92,23 @@ public class Utils {
         }
         return Optional.empty();
     }
+
+    /**
+     * Returns a zero-padded offset string in the same format as Kafka's log segment file names
+     * @param offset
+     * @return zero-padded offset string
+     */
+    public static String getZeroPaddedOffset(long offset) {
+        return String.format("%020d", offset);
+    }
+
+    public static SegmentUtils.SegmentFileType getSegmentFileTypeFromName(String name) {
+        if (name.endsWith("." + SegmentUtils.SegmentFileType.LOG.name().toLowerCase()))
+            return SegmentUtils.SegmentFileType.LOG;
+        if (name.endsWith("." + SegmentUtils.SegmentFileType.INDEX.name().toLowerCase()))
+            return SegmentUtils.SegmentFileType.INDEX;
+        if (name.endsWith("." + SegmentUtils.SegmentFileType.TIMEINDEX.name().toLowerCase()))
+            return SegmentUtils.SegmentFileType.TIMEINDEX;
+        return null;
+    }
 }

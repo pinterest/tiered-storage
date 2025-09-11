@@ -237,10 +237,10 @@ public class TimeIndex implements MetadataJsonSerializable {
 
     @Override
     public String toString() {
-        return String.format("TimeIndex{entries=%d, firstTimestamp=%s, lastTimestamp=%s}", 
+        return String.format("TimeIndex{entries=%d, firstEntry=%s, lastEntry=%s}",
                 entries.size(), 
-                isEmpty() ? "null" : getFirstEntry().getTimestamp(),
-                isEmpty() ? "null" : getLastEntry().getTimestamp());
+                isEmpty() ? "null" : getFirstEntry(),
+                isEmpty() ? "null" : getLastEntry());
     }
 
     @Override
@@ -287,7 +287,7 @@ public class TimeIndex implements MetadataJsonSerializable {
         
         @Override
         public String toString() {
-            return String.format("TimeIndexEntry{timestamp=%d, relativeOffset=%d}", timestamp, relativeOffset);
+            return String.format("TimeIndexEntry{timestamp=%d, relativeOffset=%d, baseOffset=%d}", timestamp, relativeOffset, baseOffset);
         }
         
         @Override

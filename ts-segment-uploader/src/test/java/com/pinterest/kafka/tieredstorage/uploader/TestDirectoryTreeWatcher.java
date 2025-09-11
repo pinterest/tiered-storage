@@ -1,9 +1,14 @@
 package com.pinterest.kafka.tieredstorage.uploader;
 
+import com.pinterest.kafka.tieredstorage.common.SegmentUtils;
 import com.pinterest.kafka.tieredstorage.common.discovery.StorageServiceEndpointProvider;
 import com.pinterest.kafka.tieredstorage.common.discovery.s3.MockS3StorageServiceEndpointProvider;
+import com.pinterest.kafka.tieredstorage.common.metadata.TimeIndex;
+import com.pinterest.kafka.tieredstorage.common.metadata.TopicPartitionMetadata;
 import com.pinterest.kafka.tieredstorage.uploader.dlq.DeadLetterQueueHandler;
-import com.pinterest.kafka.tieredstorage.uploader.leadership.ZookeeperLeadershipWatcher;
+import com.pinterest.kafka.tieredstorage.uploader.leadership.LeadershipWatcher;
+import com.pinterest.kafka.tieredstorage.uploader.management.S3SegmentManager;
+import com.pinterest.kafka.tieredstorage.uploader.management.SegmentManager;
 import com.salesforce.kafka.test.junit5.SharedKafkaTestResource;
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.admin.NewPartitions;
@@ -14,9 +19,15 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
+import software.amazon.awssdk.core.ResponseInputStream;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectResponse;
+import software.amazon.awssdk.services.s3.model.ListObjectsV2Response;
+import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
@@ -27,6 +38,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
@@ -37,6 +49,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 public class TestDirectoryTreeWatcher extends TestBase {
     @RegisterExtension
@@ -59,6 +72,7 @@ public class TestDirectoryTreeWatcher extends TestBase {
 
         // override s3 client
         overrideS3ClientForFileDownloader(s3Client);
+        S3SegmentManager.setS3Client(s3Client);
         overrideS3AsyncClientForFileUploader(s3AsyncClient);
 
         // endpoint provider setup
@@ -74,7 +88,10 @@ public class TestDirectoryTreeWatcher extends TestBase {
 
         // start directory tree watcher
         directoryTreeWatcher = new DirectoryTreeWatcher(s3FileUploader, config, environmentProvider);
-        DirectoryTreeWatcher.setLeadershipWatcher(new ZookeeperLeadershipWatcher(directoryTreeWatcher, config, environmentProvider));
+        LeadershipWatcher leadershipWatcher = LeadershipWatcher.createLeadershipWatcher(directoryTreeWatcher, config, environmentProvider);
+        DirectoryTreeWatcher.setLeadershipWatcher(leadershipWatcher);
+        SegmentManager segmentManager = SegmentManager.createSegmentManager(config, environmentProvider, endpointProvider, leadershipWatcher);
+        DirectoryTreeWatcher.setSegmentManager(segmentManager);
         directoryTreeWatcher.initialize();
         directoryTreeWatcher.start();
     }
@@ -432,6 +449,108 @@ public class TestDirectoryTreeWatcher extends TestBase {
 
         // override the s3AsyncClient back to original
         MultiThreadedS3FileUploader.overrideS3Client(s3AsyncClient);
+    }
+
+    /**
+     * Test that uploaded segments have corresponding entries in the metadata file
+     */
+    @Test
+    void testUploadedSegmentsHaveMetadataEntries() throws Exception {
+        // Create test data directory and files if they don't exist
+        TopicPartition tp = new TopicPartition(TEST_TOPIC_A, 0);
+        Path topicPartitionDir = Paths.get(environmentProvider.logDir()).resolve(tp.topic() + "-" + tp.partition());
+
+        // Ensure the directory exists
+        if (!Files.exists(topicPartitionDir)) {
+            Files.createDirectories(topicPartitionDir);
+        }
+
+        // Create test segment files
+        String[] offsets = {"00000000000000000000", "00000000000000000100", "00000000000000000200", "00000000000000000300"};
+        List<Path> createdFiles = new ArrayList<>();
+
+        try {
+            for (String offset : offsets) {
+                // Create .log, .index, and .timeindex files for each segment
+                Set<String> extensions = DirectoryTreeWatcher.MONITORED_EXTENSIONS;
+                for (String extension : extensions) {
+                    Path segmentFile = topicPartitionDir.resolve(offset + extension);
+                    Files.write(segmentFile, ("test-content-" + offset + extension).getBytes());
+                    createdFiles.add(segmentFile);
+                }
+                Thread.sleep(1000);
+            }
+
+            // Wait for DirectoryTreeWatcher to process and upload the files
+            Thread.sleep(20000);
+
+            // Verify files were uploaded to S3
+            MockS3StorageServiceEndpointProvider endpointProvider = new MockS3StorageServiceEndpointProvider();
+            endpointProvider.initialize(TEST_CLUSTER);
+            String prefix = endpointProvider.getStorageServiceEndpointBuilderForTopic(TEST_TOPIC_A)
+                    .setTopicPartition(tp)
+                    .setPrefixEntropyNumBits(config.getS3PrefixEntropyBits())
+                    .build()
+                    .getFullPrefix();
+
+            // Check that segments were uploaded
+            ListObjectsV2Response listResponse = getListObjectsV2Response(S3_BUCKET, prefix, s3AsyncClient);
+            long logFiles = listResponse.contents().stream()
+                    .filter(obj -> obj.key().endsWith(SegmentUtils.getFileTypeSuffix(SegmentUtils.SegmentFileType.LOG)))
+                    .count();
+            assertEquals(3, logFiles );
+
+            // Check for metadata file existence
+            String metadataKey = prefix + "/" + TopicPartitionMetadata.FILENAME;
+            try {
+                TopicPartitionMetadata metadata = getMetadata(metadataKey);
+                assertNotNull(metadata, "Metadata should be parseable");
+                assertEquals(tp, metadata.getTopicPartition(), "Metadata should be for correct topic partition");
+
+                TimeIndex timeIndex = metadata.getTimeIndex();
+                if (timeIndex == null) {
+                    fail("TimeIndex should not be null");
+                }
+                assertEquals(3, metadata.getTimeIndex().size());    // segment 200 should still be active
+                for (int i = 0; i < 3; i++) {
+                    TimeIndex.TimeIndexEntry entry = metadata.getTimeIndex().getEntry(i);
+                    assertEquals(i * 100L, entry.getBaseOffset());
+                    assertEquals(0, entry.getRelativeOffset());
+                    assertTrue(entry.getTimestamp() > System.currentTimeMillis() - 30000 && entry.getTimestamp() < System.currentTimeMillis());
+                }
+
+
+            } catch (NoSuchKeyException e) {
+                // Metadata file doesn't exist yet - this could be normal if segments haven't been fully processed
+                fail("Should have metadata file");
+            }
+
+        } finally {
+            // Clean up created test files
+            for (Path file : createdFiles) {
+                try {
+                    Files.deleteIfExists(file);
+                } catch (IOException e) {
+                    System.err.println("Failed to clean up test file: " + file + ", error: " + e.getMessage());
+                }
+            }
+        }
+    }
+
+    /**
+     * Helper method to get the size of TimeIndex in metadata file
+     */
+    private TopicPartitionMetadata getMetadata(String metadataKey) {
+        try {
+            ResponseInputStream<GetObjectResponse> metadataResponse = s3Client.getObject(
+                    GetObjectRequest.builder().bucket(S3_BUCKET).key(metadataKey).build());
+
+            String metadataContent = new String(metadataResponse.readAllBytes(), StandardCharsets.UTF_8);
+            return TopicPartitionMetadata.loadFromJson(metadataContent);
+        } catch (Exception e) {
+            // Metadata doesn't exist yet or couldn't be read
+            return null;
+        }
     }
 
     private static void increasePartitionsAndVerify(SharedKafkaTestResource sharedKafkaTestResource, String topic, int newPartitionCount) throws InterruptedException {

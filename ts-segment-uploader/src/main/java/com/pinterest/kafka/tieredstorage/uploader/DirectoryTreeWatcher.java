@@ -1,6 +1,7 @@
 package com.pinterest.kafka.tieredstorage.uploader;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.pinterest.kafka.tieredstorage.common.SegmentUtils;
 import com.pinterest.kafka.tieredstorage.common.metadata.TimeIndex;
 import com.pinterest.kafka.tieredstorage.common.metadata.TopicPartitionMetadata;
 import com.pinterest.kafka.tieredstorage.common.metadata.TopicPartitionMetadataUtil;
@@ -57,7 +58,12 @@ import java.util.regex.Pattern;
  */
 public class DirectoryTreeWatcher implements Runnable {
     private static final Logger LOG = LogManager.getLogger(DirectoryTreeWatcher.class);
-    public static final Set<String> MONITORED_EXTENSIONS = Set.of(".timeindex", ".index", ".log");
+    public static final Set<String> MONITORED_EXTENSIONS =
+            Set.of(
+                    SegmentUtils.getFileTypeSuffix(SegmentUtils.SegmentFileType.TIMEINDEX),
+                    SegmentUtils.getFileTypeSuffix(SegmentUtils.SegmentFileType.INDEX),
+                    SegmentUtils.getFileTypeSuffix(SegmentUtils.SegmentFileType.LOG)
+            );
     private static final Pattern MONITORED_FILE_PATTERN = Pattern.compile("^\\d+(" + String.join("|", MONITORED_EXTENSIONS) + ")$");
     private static Map<TopicPartition, String> activeSegment;
     private static Map<TopicPartition, Set<String>> segmentsQueue;
@@ -181,8 +187,8 @@ public class DirectoryTreeWatcher implements Runnable {
                 // send a successful retry metric (to close the loop)
                 handleSuccessfulRetries(uploadTask, topicPartition);
             }
-            if (uploadTask.getSubPath().endsWith(".log")) {
-                if (uploadTask.getFullFilename().endsWith(".log")) {
+            if (uploadTask.getSubPath().endsWith(SegmentUtils.getFileTypeSuffix(SegmentUtils.SegmentFileType.LOG))) {
+                if (uploadTask.getFullFilename().endsWith(SegmentUtils.getFileTypeSuffix(SegmentUtils.SegmentFileType.LOG))) {
                     MetricRegistryManager.getInstance(config.getMetricsConfiguration()).updateCounter(
                             topicPartition.topic(),
                             topicPartition.partition(),
@@ -216,19 +222,31 @@ public class DirectoryTreeWatcher implements Runnable {
                     );
                 }
                 // this should be the last file in the allowed extensions
-                String filename = uploadTask.getFullFilename().substring(0, uploadTask.getFullFilename().lastIndexOf(".log"));
+                String filename = uploadTask.getFullFilename()
+                        .substring(0, uploadTask.getFullFilename().lastIndexOf(SegmentUtils.getFileTypeSuffix(SegmentUtils.SegmentFileType.LOG)));
                 dequeueSegment(topicPartition, filename);
                 uploadWatermarkFile(uploadTask, topicPartition, filename);
             } else if (uploadTask.getSubPath().endsWith(".wm")) {
                 long startTs = System.currentTimeMillis();
                 boolean metadataUpdateSuccess = updateMetadata(uploadTask);
                 if (metadataUpdateSuccess) {
-                    LOG.info("Successfully updated metadata for " + uploadTask.getTopicPartition());
+                    long latency = System.currentTimeMillis() - startTs;
+                    LOG.info(String.format("Successfully updated metadata for topicPartition=%s, offset=%s in %sms", topicPartition, uploadTask.getOffset(), latency));
                     MetricRegistryManager.getInstance(config.getMetricsConfiguration()).updateCounter(
                             topicPartition.topic(),
                             topicPartition.partition(),
                             UploaderMetrics.METADATA_UPDATE_LATENCY_MS_METRIC,
-                            System.currentTimeMillis() - startTs,
+                            latency,
+                            "cluster=" + environmentProvider.clusterId(),
+                            "broker=" + environmentProvider.brokerId(),
+                            "update_reason=write"
+                    );
+                } else {
+                    LOG.warn(String.format("Failed to update metadata for topicPartition=%s, offset=%s, skipping since it is best-effort", topicPartition, uploadTask.getOffset()));
+                    MetricRegistryManager.getInstance(config.getMetricsConfiguration()).incrementCounter(
+                            topicPartition.topic(),
+                            topicPartition.partition(),
+                            UploaderMetrics.METADATA_UPDATE_FAILURE_COUNT_METRIC,
                             "cluster=" + environmentProvider.clusterId(),
                             "broker=" + environmentProvider.brokerId(),
                             "update_reason=write"
@@ -390,7 +408,7 @@ public class DirectoryTreeWatcher implements Runnable {
                 retryUpload(uploadTask.retryMarkedForDeletion(), throwable, topicPartition);
             } else {
                 // dequeue the segment since we lost it
-                if (uploadTask.getFullFilename().endsWith(".log"))
+                if (uploadTask.getFullFilename().endsWith(SegmentUtils.getFileTypeSuffix(SegmentUtils.SegmentFileType.LOG)))
                     dequeueSegment(uploadTask.getTopicPartition(), uploadTask.getOffset());
                 LOG.error(String.format("Failed to upload file %s before it was deleted.", uploadTask.getAbsolutePath()));
                 // send a file not found metric highlighting a missed upload

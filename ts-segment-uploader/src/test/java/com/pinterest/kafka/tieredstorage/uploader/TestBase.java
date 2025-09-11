@@ -4,9 +4,14 @@ import com.adobe.testing.s3mock.junit5.S3MockExtension;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import com.pinterest.kafka.tieredstorage.common.SegmentUtils;
+import com.pinterest.kafka.tieredstorage.common.Utils;
+import com.pinterest.kafka.tieredstorage.common.discovery.s3.S3StorageServiceEndpoint;
 import com.salesforce.kafka.test.junit5.SharedKafkaTestResource;
 import org.apache.kafka.clients.admin.DescribeConfigsResult;
 import org.apache.kafka.common.config.ConfigResource;
+import org.apache.log4j.LogManager;
+import org.apache.log4j.Logger;
 import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.ZooDefs;
@@ -17,6 +22,7 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import software.amazon.awssdk.auth.credentials.AnonymousCredentialsProvider;
 import software.amazon.awssdk.core.ResponseInputStream;
 import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration;
+import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3AsyncClient;
 import software.amazon.awssdk.services.s3.S3Client;
@@ -25,9 +31,12 @@ import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Response;
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.services.s3.model.PutObjectResponse;
 
 import java.io.IOException;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -39,6 +48,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
 public class TestBase {
+    private static final Logger LOG = LogManager.getLogger(TestBase.class.getName());
     @RegisterExtension
     protected static final S3MockExtension S3_MOCK =
             S3MockExtension.builder().silent().withSecureConnection(false).build();
@@ -69,6 +79,7 @@ public class TestBase {
     @AfterEach
     public void tearDown() throws IOException, InterruptedException, ExecutionException {
         Thread.sleep(5000);
+        clearAllObjects(S3_BUCKET);
         s3Client.close();
     }
 
@@ -229,6 +240,27 @@ public class TestBase {
         return s3AsyncClient.listObjectsV2(ListObjectsV2Request.builder().bucket(bucket).prefix(prefix).build()).get();
     }
 
+    protected static PutObjectResponse putObjectResponse(String bucket, String prefix, S3Client s3Client, String content) {
+        return s3Client.putObject(PutObjectRequest.builder().bucket(bucket).key(prefix).build(), RequestBody.fromBytes(content.getBytes(StandardCharsets.UTF_8)));
+    }
+
+    protected void putEmptyObjects(long minOffset, long maxOffset, long numOffsetsPerFile, S3StorageServiceEndpoint endpoint) {
+        for (long i = minOffset; i <= maxOffset; i += numOffsetsPerFile) {
+            LOG.info(String.format("Put empty object to bucket=%s, key=%s", endpoint.getBucket(), getS3ObjectKey(endpoint, i, SegmentUtils.SegmentFileType.INDEX)));
+            s3Client.putObject(PutObjectRequest.builder().bucket(endpoint.getBucket()).key(getS3ObjectKey(endpoint, i, SegmentUtils.SegmentFileType.INDEX)).build(), RequestBody.empty());
+
+            LOG.info(String.format("Put empty object to bucket=%s, key=%s", endpoint.getBucket(), getS3ObjectKey(endpoint, i, SegmentUtils.SegmentFileType.LOG)));
+            s3Client.putObject(PutObjectRequest.builder().bucket(endpoint.getBucket()).key(getS3ObjectKey(endpoint, i, SegmentUtils.SegmentFileType.LOG)).build(), RequestBody.empty());
+
+            LOG.info(String.format("Put empty object to bucket=%s, key=%s", endpoint.getBucket(), getS3ObjectKey(endpoint, i, SegmentUtils.SegmentFileType.TIMEINDEX)));
+            s3Client.putObject(PutObjectRequest.builder().bucket(endpoint.getBucket()).key(getS3ObjectKey(endpoint, i, SegmentUtils.SegmentFileType.TIMEINDEX)).build(), RequestBody.empty());
+        }
+    }
+
+    protected static String getS3ObjectKey(S3StorageServiceEndpoint endpoint, long offset, SegmentUtils.SegmentFileType fileType) {
+        return endpoint.getFullPrefix() + "/" + Utils.getZeroPaddedOffset(offset) + "." + fileType.toString().toLowerCase();
+    }
+
     protected static void reassignPartitions(SharedKafkaTestResource sharedKafkaTestResource, Map<String, Map<Integer, List<Integer>>> assignmentMap) throws IOException, InterruptedException, KeeperException {
         String path = "/admin/reassign_partitions";
         ZooKeeper zk = new ZooKeeper(sharedKafkaTestResource.getZookeeperConnectString(), 10000, null);
@@ -287,5 +319,13 @@ public class TestBase {
 
     public static void setProperty(SegmentUploaderConfiguration config, String key, String value) {
         config.setProperty(key, value);
+    }
+
+    public void clearAllObjects(String bucket) {
+        s3Client.listObjectsV2Paginator(builder -> builder.bucket(bucket).prefix("/")).stream().forEach(page -> {
+            page.contents().forEach(object -> {
+                s3Client.deleteObject(builder -> builder.bucket(bucket).key(object.key()));
+            });
+        });
     }
 }

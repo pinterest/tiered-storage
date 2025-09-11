@@ -3,6 +3,7 @@ package com.pinterest.kafka.tieredstorage.uploader;
 import com.pinterest.kafka.tieredstorage.common.CommonTestUtils;
 import com.pinterest.kafka.tieredstorage.common.discovery.s3.S3StorageServiceEndpoint;
 import com.pinterest.kafka.tieredstorage.common.discovery.s3.S3StorageServiceEndpointProvider;
+import com.pinterest.kafka.tieredstorage.uploader.management.S3SegmentManager;
 import com.salesforce.kafka.test.junit5.SharedKafkaTestResource;
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.common.TopicPartition;
@@ -68,6 +69,7 @@ public class TestKafkaSegmentUploader extends TestBase {
         String configDirectory = "src/test/resources";
         overrideS3ClientForFileDownloader(s3Client);
         overrideS3AsyncClientForFileUploader(s3AsyncClient);
+        S3SegmentManager.setS3Client(s3Client);
         uploader = new KafkaSegmentUploader(configDirectory, environmentProvider);
         uploader.start();
     }
