@@ -79,9 +79,9 @@ public class SegmentUploaderConfiguration {
     /**
      * Interval in seconds to execute retention-based GC on remote storage
      */
-    private static final String SEGMENT_MANAGER_GC_INTERVAL_SECONDS = TS_SEGMENT_UPLOADER_PREFIX + "." + "manager.gc.interval.seconds";
+    private static final String SEGMENT_MANAGER_GC_INTERVAL_SECONDS = TS_SEGMENT_UPLOADER_PREFIX + "." + "segment.manager.gc.interval.seconds";
 
-    private static final String SEGMENT_MANAGER_GC_RETENTION_SECONDS = TS_SEGMENT_UPLOADER_PREFIX + "." + "manager.gc.%sretention.seconds";
+    private static final String SEGMENT_MANAGER_GC_RETENTION_SECONDS = TS_SEGMENT_UPLOADER_PREFIX + "." + "segment.manager.gc.%sretention.seconds";
 
     // Internal structures
     private final Properties properties = new Properties();
