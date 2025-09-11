@@ -164,8 +164,10 @@ public class DirectoryTreeWatcher implements Runnable {
         });
         LOG.info("Starting LeadershipWatcher: " + leadershipWatcher.getClass().getName());
         leadershipWatcher.start();
-        LOG.info("Starting SegmentManager: " + segmentManager.getClass().getName());
-        segmentManager.start();
+        if (segmentManager != null) {
+            LOG.info("Starting SegmentManager: " + segmentManager.getClass().getName());
+            segmentManager.start();
+        }
         LOG.info("Submitting s3UploadHandler loop");
     }
 
