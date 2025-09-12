@@ -18,7 +18,6 @@ import org.apache.zookeeper.data.Stat;
 import java.io.IOException;
 import java.util.HashSet;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Watches the leadership of Kafka partitions by pulling the state from ZooKeeper every X seconds and returning the

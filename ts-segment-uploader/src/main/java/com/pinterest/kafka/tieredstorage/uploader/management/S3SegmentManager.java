@@ -99,7 +99,7 @@ public class S3SegmentManager extends SegmentManager {
         S3StorageServiceEndpoint endpoint = getS3StorageServiceEndpoint(topicPartition);
         String bucket = endpoint.getBucket();
         String key = endpoint.getFullPrefix();
-        ListObjectsRequest request = ListObjectsRequest.builder().bucket(bucket).prefix(key).build();
+        ListObjectsRequest request = ListObjectsRequest.builder().bucket(bucket).prefix(key + "/").build(); // add trailing slash to ensure we don't accidentally delete objects in other partitions with the same prefix
         ListObjectsResponse response = s3Client.listObjects(request);
         for (S3Object object : response.contents()) {
             SegmentUtils.SegmentFileType fileType = Utils.getSegmentFileTypeFromName(object.key());

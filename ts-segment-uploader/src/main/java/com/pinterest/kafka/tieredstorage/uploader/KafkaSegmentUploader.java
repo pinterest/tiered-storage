@@ -5,11 +5,8 @@ import com.pinterest.kafka.tieredstorage.common.discovery.StorageServiceEndpoint
 import com.pinterest.kafka.tieredstorage.uploader.leadership.LeadershipWatcher;
 import com.pinterest.kafka.tieredstorage.uploader.management.SegmentManager;
 
-import org.apache.commons.configuration2.ex.ConfigurationException;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
-import org.apache.zookeeper.KeeperException;
-
 import java.io.IOException;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;

@@ -30,6 +30,7 @@ import java.util.concurrent.ExecutionException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 import static org.mockito.Mockito.when;
 
 public class TestS3SegmentManager extends TestBase {
@@ -160,6 +161,80 @@ public class TestS3SegmentManager extends TestBase {
         assertTrue(responseObjects.contains("asdf"));
 
         clearAllObjects(endpoint.getBucket());
+    }
+
+    @Test
+    void testDeleteSegmentsBeforeBaseOffsetInclusiveWithSimilarPartitions() throws ExecutionException, InterruptedException {
+        // Find two partitions that have the same prefix entropy hash
+        int[] partitions = findPartitionsWithSamePrefixHash(TEST_CLUSTER, TEST_TOPIC_A, config.getS3PrefixEntropyBits());
+        if (partitions[0] == -1 || partitions[1] == -1) {
+            fail("No two partitions with the same prefix entropy hash found");
+        }
+        TopicPartition tp1 = new TopicPartition(TEST_TOPIC_A, partitions[0]);
+        TopicPartition tp2 = new TopicPartition(TEST_TOPIC_A, partitions[1]);
+
+        // Get endpoints for both partitions
+        S3StorageServiceEndpoint endpoint1 = endpointProvider.getStorageServiceEndpointBuilderForTopic(tp1.topic())
+                .setTopicPartition(tp1)
+                .setPrefixEntropyNumBits(config.getS3PrefixEntropyBits())
+                .build();
+        S3StorageServiceEndpoint endpoint2 = endpointProvider.getStorageServiceEndpointBuilderForTopic(tp2.topic())
+                .setTopicPartition(tp2)
+                .setPrefixEntropyNumBits(config.getS3PrefixEntropyBits())
+                .build();
+
+        // Verify both partitions have the same prefix (due to same entropy hash)
+        assertEquals(endpoint1.getPrefixExcludingTopicPartition(), endpoint2.getPrefixExcludingTopicPartition(),
+                "Partitions should have same S3 prefix due to same entropy hash");
+
+        // Put test objects for first partition (offsets 0, 100, 200, 300)
+        putEmptyObjects(0L, 300L, 100L, endpoint1);
+        
+        // Put test objects for second partition (offsets 15, 30, 45...)
+        putEmptyObjects(15, 300L, 15L, endpoint2);
+
+        // Delete segments before offset 200 (inclusive) for first partition only
+        Set<Long> deleted = s3SegmentManager.deleteSegmentsBeforeBaseOffsetInclusive(tp1, 200L);
+        
+        // Verify first partition deletions
+        assertEquals(3, deleted.size());
+        assertTrue(deleted.contains(0L));
+        assertTrue(deleted.contains(100L));
+        assertTrue(deleted.contains(200L));
+
+        // Verify first partition has only offset 300 remaining
+        ListObjectsV2Response response1 = getListObjectsV2Response(endpoint1.getBucket(), endpoint1.getFullPrefix() + "/", s3AsyncClient);
+        assertEquals(3, response1.contents().size()); // 300.log, 300.index, 300.timeindex
+
+        // Verify second partition is completely untouched (should have all 4 offsets * 3 file types = 12 files)
+        ListObjectsV2Response response2 = getListObjectsV2Response(endpoint2.getBucket(), endpoint2.getFullPrefix() + "/", s3AsyncClient);
+        assertEquals(60, response2.contents().size()); // All segments for second partition should remain
+
+        clearAllObjects(endpoint1.getBucket());
+        clearAllObjects(endpoint2.getBucket());
+    }
+
+    /**
+     * Find two partitions that have the same prefix entropy hash for testing prefix filtering
+     */
+    private int[] findPartitionsWithSamePrefixHash(String cluster, String topic, int prefixEntropyBits) {
+        String firstHash = null;
+        int firstPartition = -1;
+        
+        // Search through partition numbers to find two with the same hash
+        for (int partition = 1; partition < 1000; partition++) {
+            String hash = com.pinterest.kafka.tieredstorage.common.Utils.getBinaryHashForClusterTopicPartition(
+                    cluster, topic, partition, prefixEntropyBits);
+            
+            if (firstHash == null) {
+                firstHash = hash;
+                firstPartition = partition;
+            } else if (hash.equals(firstHash) && partition != firstPartition && Integer.toString(partition).startsWith(Integer.toString(firstPartition))) {
+                return new int[]{firstPartition, partition};
+            }
+        }
+        
+        return new int[]{-1, -1};
     }
     
 }
