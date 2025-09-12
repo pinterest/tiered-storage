@@ -108,6 +108,8 @@ public abstract class SegmentManager {
                             "broker=" + environmentProvider.brokerId(),
                             "update_reason=gc"
                     );
+                    // continue to next partition since we don't want to remove any segments if metadata update fails
+                    continue;
                 }
             } finally {
                 TopicPartitionMetadataUtil.releaseLock(leadingPartition);

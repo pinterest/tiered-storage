@@ -4,6 +4,7 @@ import com.pinterest.kafka.tieredstorage.common.SegmentUtils;
 import com.pinterest.kafka.tieredstorage.common.Utils;
 import com.pinterest.kafka.tieredstorage.common.discovery.StorageServiceEndpointProvider;
 import com.pinterest.kafka.tieredstorage.common.discovery.s3.MockS3StorageServiceEndpointProvider;
+import com.pinterest.kafka.tieredstorage.common.discovery.s3.S3StorageServiceEndpoint;
 import com.pinterest.kafka.tieredstorage.common.metadata.TimeIndex;
 import com.pinterest.kafka.tieredstorage.common.metadata.TopicPartitionMetadata;
 import com.pinterest.kafka.tieredstorage.common.metadata.TopicPartitionMetadataUtil;
@@ -214,6 +215,48 @@ public class TestSegmentManager extends TestBase {
         assertFalse(TopicPartitionMetadataUtil.isLocked(tp));
     }
 
+    @Test
+    void testMetadataUpdateFailureSkipsSegmentDeletion() throws IOException {
+        LeadershipWatcher leadershipWatcher = Mockito.mock(LeadershipWatcher.class);
+        TopicPartition tp = new TopicPartition(TEST_TOPIC_A, 0);
+        when(leadershipWatcher.getLeadingPartitions()).thenReturn(Collections.singleton(tp));
+
+        SegmentUploaderConfiguration config = getSegmentUploaderConfiguration(TEST_CLUSTER);
+
+        // Use a mock that fails metadata updates
+        mockManager = new MockSegmentManagerWithFailingMetadataUpdate(config, environmentProvider, endpointProvider, leadershipWatcher);
+        Files.createDirectories(Paths.get(DIRECTORY.getPath(), tp.toString()));
+
+        // write mock metadata with expired entries
+        TopicPartitionMetadata metadata = new TopicPartitionMetadata(tp);   // retention is 3600 seconds (1 hour)
+        TimeIndex timeIndex = new TimeIndex(TimeIndex.TimeIndexType.TOPIC_PARTITION);
+        timeIndex.insertEntry(new TimeIndex.TimeIndexEntry(System.currentTimeMillis() - 7200 * 1000, 100, 0L)); // 2 hours ago (expired)
+        timeIndex.insertEntry(new TimeIndex.TimeIndexEntry(System.currentTimeMillis() - 5400 * 1000, 100, 100L)); // 1.5 hours ago (expired)
+        timeIndex.insertEntry(new TimeIndex.TimeIndexEntry(System.currentTimeMillis() - 1800 * 1000, 100, 200L)); // 0.5 hours ago (not expired)
+        metadata.updateMetadata(TopicPartitionMetadata.TIMEINDEX_KEY, timeIndex);
+
+        writeMetadataToLocalFile(metadata); // write actual metadata to local file
+
+        // write mock segments that would normally be deleted
+        Set<Long> offsets = Set.of(0L, 100L, 200L);
+        for (long offset : offsets) {
+            Files.write(Paths.get(DIRECTORY.getPath(), tp.toString(), String.format("%020d", offset) + SegmentUtils.getFileTypeSuffix(SegmentUtils.SegmentFileType.LOG)), "".getBytes(StandardCharsets.UTF_8));
+            Files.write(Paths.get(DIRECTORY.getPath(), tp.toString(), String.format("%020d", offset) + SegmentUtils.getFileTypeSuffix(SegmentUtils.SegmentFileType.TIMEINDEX)), "".getBytes(StandardCharsets.UTF_8));
+            Files.write(Paths.get(DIRECTORY.getPath(), tp.toString(), String.format("%020d", offset) + SegmentUtils.getFileTypeSuffix(SegmentUtils.SegmentFileType.INDEX)), "".getBytes(StandardCharsets.UTF_8));
+        }
+
+        int initialFileCount = Paths.get(DIRECTORY.getPath(), tp.toString()).toFile().listFiles().length;
+
+        // run garbage collection - should not delete segments due to metadata update failure
+        mockManager.runGarbageCollection();
+
+        // verify segments were NOT deleted
+        int finalFileCount = Paths.get(DIRECTORY.getPath(), tp.toString()).toFile().listFiles().length;
+        assertEquals(initialFileCount, finalFileCount);
+
+        assertFalse(TopicPartitionMetadataUtil.isLocked(tp));
+    }
+
     private static class MockSegmentManager extends SegmentManager {
 
         public MockSegmentManager(SegmentUploaderConfiguration config, KafkaEnvironmentProvider environmentProvider, StorageServiceEndpointProvider endpointProvider, LeadershipWatcher leadershipWatcher) {
@@ -237,14 +280,7 @@ public class TestSegmentManager extends TestBase {
 
         @Override
         public boolean writeMetadataToStorage(TopicPartitionMetadata tpMetadata) {
-            String jsonString = tpMetadata.getAsJsonString();
-            try {
-                Files.createDirectories(Paths.get(DIRECTORY.getPath(), tpMetadata.getTopicPartition().toString()));
-                Files.write(Paths.get(DIRECTORY.getPath(), tpMetadata.getTopicPartition().toString(), TopicPartitionMetadata.FILENAME), jsonString.getBytes(StandardCharsets.UTF_8));
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-            return true;
+            return writeMetadataToLocalFile(tpMetadata);
         }
 
         @Override
@@ -263,6 +299,30 @@ public class TestSegmentManager extends TestBase {
                 }
             }
             return offsetsDeleted;
+        }
+    }
+
+    private static boolean writeMetadataToLocalFile(TopicPartitionMetadata tpMetadata) {
+        String jsonString = tpMetadata.getAsJsonString();
+        try {
+            Files.createDirectories(Paths.get(DIRECTORY.getPath(), tpMetadata.getTopicPartition().toString()));
+            Files.write(Paths.get(DIRECTORY.getPath(), tpMetadata.getTopicPartition().toString(), TopicPartitionMetadata.FILENAME), jsonString.getBytes(StandardCharsets.UTF_8));
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        return true;
+    }
+
+    private static class MockSegmentManagerWithFailingMetadataUpdate extends MockSegmentManager {
+
+        public MockSegmentManagerWithFailingMetadataUpdate(SegmentUploaderConfiguration config, KafkaEnvironmentProvider environmentProvider, StorageServiceEndpointProvider endpointProvider, LeadershipWatcher leadershipWatcher) {
+            super(config, environmentProvider, endpointProvider, leadershipWatcher);
+        }
+
+        @Override
+        public boolean writeMetadataToStorage(TopicPartitionMetadata tpMetadata) {
+            // Simulate metadata update failure
+            return false;
         }
     }
 
