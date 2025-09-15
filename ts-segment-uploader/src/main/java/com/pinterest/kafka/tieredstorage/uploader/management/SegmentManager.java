@@ -97,6 +97,14 @@ public abstract class SegmentManager {
                             "broker=" + environmentProvider.brokerId(),
                             "update_reason=gc"
                     );
+                    MetricRegistryManager.getInstance(config.getMetricsConfiguration()).updateCounter(
+                            leadingPartition.topic(),
+                            leadingPartition.partition(),
+                            UploaderMetrics.SEGMENT_MANAGER_LOG_START_OFFSET_METRIC,
+                            timeIndex.getFirstEntry().getBaseOffset(),
+                            "cluster=" + environmentProvider.clusterId(),
+                            "broker=" + environmentProvider.brokerId()
+                    );
                     LOG.info("Successfully updated TopicPartitionMetadata for " + leadingPartition);
                 } else {
                     LOG.warn("Failed to update TopicPartitionMetadata for " + leadingPartition + ", skipping since it is best-effort");
@@ -125,16 +133,17 @@ public abstract class SegmentManager {
             LOG.info(String.format("Deleted segments before and including baseOffset=%s for topicPartition=%s: %s", cutoffOffset, leadingPartition, deletedSegments));
             long duration = System.currentTimeMillis() - startTsForTopicPartition;
             LOG.info(String.format("Completed garbage collection for %s in %sms", leadingPartition, duration));
-            MetricRegistryManager.getInstance(config.getMetricsConfiguration()).updateCounter(
-                    leadingPartition.topic(),
-                    leadingPartition.partition(),
-                    UploaderMetrics.SEGMENT_MANAGER_GC_DURATION_MS_METRIC,
-                    duration,
-                    "cluster=" + environmentProvider.clusterId(),
-                    "broker=" + environmentProvider.brokerId()
-            );
         }
-        LOG.info(String.format("Completed garbage collection for all %s topicPartitions in %sms", leadingPartitions.size(), System.currentTimeMillis() - startTs));
+        long cycleDuration = System.currentTimeMillis() - startTs;
+        MetricRegistryManager.getInstance(config.getMetricsConfiguration()).updateCounter(
+            null,
+            null,
+            UploaderMetrics.SEGMENT_MANAGER_GC_DURATION_MS_METRIC,
+            cycleDuration,
+            "cluster=" + environmentProvider.clusterId(),
+            "broker=" + environmentProvider.brokerId()
+        );
+        LOG.info(String.format("Completed garbage collection for all %s topicPartitions in %sms", leadingPartitions.size(), cycleDuration));
     }
 
     public abstract TopicPartitionMetadata getTopicPartitionMetadataFromStorage(TopicPartition topicPartition) throws IOException;

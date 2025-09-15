@@ -6,8 +6,10 @@ import com.pinterest.kafka.tieredstorage.common.Utils;
 import com.pinterest.kafka.tieredstorage.common.discovery.StorageServiceEndpointProvider;
 import com.pinterest.kafka.tieredstorage.common.discovery.s3.S3StorageServiceEndpoint;
 import com.pinterest.kafka.tieredstorage.common.metadata.TopicPartitionMetadata;
+import com.pinterest.kafka.tieredstorage.common.metrics.MetricRegistryManager;
 import com.pinterest.kafka.tieredstorage.uploader.KafkaEnvironmentProvider;
 import com.pinterest.kafka.tieredstorage.uploader.SegmentUploaderConfiguration;
+import com.pinterest.kafka.tieredstorage.uploader.UploaderMetrics;
 import com.pinterest.kafka.tieredstorage.uploader.leadership.LeadershipWatcher;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.log4j.LogManager;
@@ -125,6 +127,13 @@ public class S3SegmentManager extends SegmentManager {
             int deleted = deleteResponse.deleted().size();
             if (deleted != 3) {
                 // short circuit to prevent holes / gaps in the segments
+                MetricRegistryManager.getInstance(config.getMetricsConfiguration()).incrementCounter(
+                    topicPartition.topic(),
+                    topicPartition.partition(),
+                    UploaderMetrics.SEGMENT_MANAGER_GC_DELETION_FAILURE_COUNT_METRIC,
+                    "cluster=" + environmentProvider.clusterId(),
+                    "broker=" + environmentProvider.brokerId()
+                );
                 LOG.warn(String.format("Short-circuiting GC cycle for %s because we only deleted %s objects for offset %s: %s", topicPartition, deleted, offset, deleteResponse.deleted()));
                 break;
             } else {
