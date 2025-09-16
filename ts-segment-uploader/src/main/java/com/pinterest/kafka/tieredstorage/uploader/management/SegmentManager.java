@@ -1,5 +1,6 @@
 package com.pinterest.kafka.tieredstorage.uploader.management;
 
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.pinterest.kafka.tieredstorage.common.discovery.StorageServiceEndpointProvider;
 import com.pinterest.kafka.tieredstorage.common.metadata.TimeIndex;
 import com.pinterest.kafka.tieredstorage.common.metadata.TopicPartitionMetadata;
@@ -20,6 +21,7 @@ import java.time.Duration;
 import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 
 public abstract class SegmentManager {
@@ -37,7 +39,8 @@ public abstract class SegmentManager {
         this.endpointProvider = endpointProvider;
         this.leadershipWatcher = leadershipWatcher;
         if (isGcEnabled()) {
-            this.garbageCollectionExecutor = Executors.newSingleThreadScheduledExecutor();
+            ThreadFactory threadFactory = new ThreadFactoryBuilder().setNameFormat("segment-manager-gc-thread-%d").build();
+            this.garbageCollectionExecutor = Executors.newSingleThreadScheduledExecutor(threadFactory);
         }
         initialize();
     }
@@ -56,7 +59,11 @@ public abstract class SegmentManager {
             LOG.info(String.format("Executing garbage collection for topicPartition=%s with retention=%ss and cutoffTimestamp=%s", leadingPartition, retentionSeconds, cutoffTimestamp));
 
             // get cutoff offset from metadata based on timestamp
-            TopicPartitionMetadataUtil.acquireLock(leadingPartition);
+            boolean lockAcquired = TopicPartitionMetadataUtil.tryAcquireLock(leadingPartition, 5000L);
+            if (!lockAcquired) {
+                LOG.warn("Failed to acquire lock for TopicPartitionMetadata for " + leadingPartition + ", skipping since it is best-effort");
+                continue;
+            }
             long cutoffOffset = -1L;
             try {
                 TopicPartitionMetadata tpMetadata;
