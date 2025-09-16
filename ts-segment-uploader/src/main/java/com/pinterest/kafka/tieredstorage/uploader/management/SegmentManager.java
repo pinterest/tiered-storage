@@ -126,6 +126,9 @@ public abstract class SegmentManager {
                     // continue to next partition since we don't want to remove any segments if metadata update fails
                     continue;
                 }
+            } catch (Exception e) {
+                LOG.error("Encountered unexpected exception while executing garbage collection for topicPartition=" + leadingPartition, e);
+                continue;
             } finally {
                 TopicPartitionMetadataUtil.releaseLock(leadingPartition);
             }
