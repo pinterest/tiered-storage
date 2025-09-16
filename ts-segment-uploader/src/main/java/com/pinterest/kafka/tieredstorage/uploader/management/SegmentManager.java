@@ -62,6 +62,14 @@ public abstract class SegmentManager {
             boolean lockAcquired = TopicPartitionMetadataUtil.tryAcquireLock(leadingPartition, 5000L);
             if (!lockAcquired) {
                 LOG.warn("Failed to acquire lock for TopicPartitionMetadata for " + leadingPartition + ", skipping since it is best-effort");
+                MetricRegistryManager.getInstance(config.getMetricsConfiguration()).incrementCounter(
+                    leadingPartition.topic(),
+                    leadingPartition.partition(),
+                    UploaderMetrics.METADATA_UPDATE_LOCK_ACQUISITION_FAILURE_METRIC,
+                    "cluster=" + environmentProvider.clusterId(),
+                    "broker=" + environmentProvider.brokerId(),
+                    "update_reason=gc"
+                );
                 continue;
             }
             long cutoffOffset = -1L;
@@ -108,7 +116,7 @@ public abstract class SegmentManager {
                             leadingPartition.topic(),
                             leadingPartition.partition(),
                             UploaderMetrics.SEGMENT_MANAGER_LOG_START_OFFSET_METRIC,
-                            timeIndex.getFirstEntry().getBaseOffset(),
+                            timeIndex.getFirstEntry() == null ? -1L : timeIndex.getFirstEntry().getBaseOffset(),
                             "cluster=" + environmentProvider.clusterId(),
                             "broker=" + environmentProvider.brokerId()
                     );
@@ -128,6 +136,13 @@ public abstract class SegmentManager {
                 }
             } catch (Exception e) {
                 LOG.error("Encountered unexpected exception while executing garbage collection for topicPartition=" + leadingPartition, e);
+                MetricRegistryManager.getInstance(config.getMetricsConfiguration()).incrementCounter(
+                    leadingPartition.topic(),
+                    leadingPartition.partition(),
+                    UploaderMetrics.SEGMENT_MANAGER_GC_EXCEPTION_METRIC,
+                    "cluster=" + environmentProvider.clusterId(),
+                    "broker=" + environmentProvider.brokerId()
+                );
                 continue;
             } finally {
                 TopicPartitionMetadataUtil.releaseLock(leadingPartition);

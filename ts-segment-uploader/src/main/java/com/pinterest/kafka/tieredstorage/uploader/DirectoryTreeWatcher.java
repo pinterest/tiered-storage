@@ -307,6 +307,14 @@ public class DirectoryTreeWatcher implements Runnable {
         boolean lockAcquired = TopicPartitionMetadataUtil.tryAcquireLock(uploadTask.getTopicPartition(), 5000L);
         if (!lockAcquired) {
             LOG.info("Failed to acquire lock for TopicPartitionMetadata for " + uploadTask.getTopicPartition() + ", skipping since it is best-effort");
+            MetricRegistryManager.getInstance(config.getMetricsConfiguration()).incrementCounter(
+                uploadTask.getTopicPartition().topic(),
+                uploadTask.getTopicPartition().partition(),
+                UploaderMetrics.METADATA_UPDATE_LOCK_ACQUISITION_FAILURE_METRIC,
+                "cluster=" + environmentProvider.clusterId(),
+                "broker=" + environmentProvider.brokerId(),
+                "update_reason=write"
+            );
             return false;
         }
         try {
@@ -321,6 +329,14 @@ public class DirectoryTreeWatcher implements Runnable {
                 }
             } catch (IOException e) {
                 LOG.info("Failed to get TopicPartitionMetadata for " + uploadTask.getTopicPartition() + ", skipping since it is best-effort");
+                MetricRegistryManager.getInstance(config.getMetricsConfiguration()).incrementCounter(
+                    uploadTask.getTopicPartition().topic(),
+                    uploadTask.getTopicPartition().partition(),
+                    UploaderMetrics.METADATA_UPDATE_FAILURE_COUNT_METRIC,
+                    "cluster=" + environmentProvider.clusterId(),
+                    "broker=" + environmentProvider.brokerId(),
+                    "update_reason=write"
+                );
                 return false;
             }
             TimeIndex timeIndex = tpMetadata.getTimeIndex();
