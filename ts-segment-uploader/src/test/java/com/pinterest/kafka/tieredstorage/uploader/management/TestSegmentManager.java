@@ -29,22 +29,24 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 
+import static com.pinterest.kafka.tieredstorage.uploader.TestBase.TEST_CLUSTER;
+import static com.pinterest.kafka.tieredstorage.uploader.TestBase.TEST_TOPIC_A;
+import static com.pinterest.kafka.tieredstorage.uploader.TestBase.createTestEnvironmentProvider;
+import static com.pinterest.kafka.tieredstorage.uploader.TestBase.getSegmentUploaderConfiguration;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.when;
 
-public class TestSegmentManager extends TestBase {
+public class TestSegmentManager {
     private static final File DIRECTORY = new File("/tmp/tiered-storage");
     private SegmentManager mockManager;
     private MockS3StorageServiceEndpointProvider endpointProvider;
     private KafkaEnvironmentProvider environmentProvider;
 
     @BeforeEach
-    @Override
     public void setup() throws Exception {
-        super.setup();
 
         // environment provider setup
         environmentProvider = createTestEnvironmentProvider("sampleZkConnect", "sampleLogDir");
@@ -59,9 +61,7 @@ public class TestSegmentManager extends TestBase {
     }
 
     @AfterEach
-    @Override
-    public void tearDown() throws IOException, ExecutionException, InterruptedException {
-        super.tearDown();
+    public void tearDown() throws IOException {
         TestBase.deleteDirectory(DIRECTORY.toPath());
     }
 

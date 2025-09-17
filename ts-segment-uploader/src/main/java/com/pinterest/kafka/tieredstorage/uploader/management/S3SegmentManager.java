@@ -30,14 +30,18 @@ import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 import software.amazon.awssdk.services.s3.model.ObjectIdentifier;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectResponse;
+import software.amazon.awssdk.services.s3.model.S3Exception;
 import software.amazon.awssdk.services.s3.model.S3Object;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.stream.Collectors;
 
 public class S3SegmentManager extends SegmentManager {
     private final static Logger LOG = LogManager.getLogger(S3SegmentManager.class.getName());
@@ -66,11 +70,17 @@ public class S3SegmentManager extends SegmentManager {
         GetObjectRequest request = GetObjectRequest.builder().bucket(bucket).key(key + "/" + TopicPartitionMetadata.FILENAME).build();
         try {
             long start = System.currentTimeMillis();
-            ResponseInputStream<GetObjectResponse> response = s3Client.getObject(request);
-            String jsonString = new String(response.readAllBytes(), StandardCharsets.UTF_8);
-            TopicPartitionMetadata tpMetadata = TopicPartitionMetadata.loadFromJson(jsonString);
-            LOG.info(String.format("Retrieved TopicPartitionMetadata from %s in %sms", endpoint.getFullPrefixUri() + "/" + TopicPartitionMetadata.FILENAME, System.currentTimeMillis() - start));
-            return tpMetadata;
+            try (ResponseInputStream<GetObjectResponse> responseStream = s3Client.getObject(request);
+                 BufferedReader reader = new BufferedReader(new InputStreamReader(responseStream, StandardCharsets.UTF_8))) {
+                String content = reader.lines().collect(Collectors.joining("\n"));
+                GetObjectResponse response = responseStream.response();
+                String eTag = response.eTag();
+
+                TopicPartitionMetadata tpMetadata = TopicPartitionMetadata.loadFromJson(content);
+                tpMetadata.setLoadHash(eTag);
+                LOG.info(String.format("Retrieved TopicPartitionMetadata from %s in %sms", endpoint.getFullPrefixUri() + "/" + TopicPartitionMetadata.FILENAME, System.currentTimeMillis() - start));
+                return tpMetadata;
+            }
         } catch (NoSuchKeyException e) {
             LOG.warn(String.format("Cannot find metadata file under %s", endpoint.getFullPrefixUri()));
             return null;
@@ -82,12 +92,25 @@ public class S3SegmentManager extends SegmentManager {
         S3StorageServiceEndpoint endpoint = getS3StorageServiceEndpoint(tpMetadata.getTopicPartition());
         String bucket = endpoint.getBucket();
         String key = endpoint.getFullPrefix() + "/" + TopicPartitionMetadata.FILENAME;
-        PutObjectRequest request = PutObjectRequest.builder().bucket(bucket).key(key).build();
+        PutObjectRequest.Builder builder = PutObjectRequest.builder().bucket(bucket).key(key);
+        if (tpMetadata.getLoadHash() != null) {
+            builder.ifMatch(tpMetadata.getLoadHash());
+        } else {
+            LOG.warn(String.format("Skipping eTag match validation in metadata update for topicPartition=%s since it is null", tpMetadata.getTopicPartition()));
+        }
+        PutObjectRequest request = builder.build();
         try {
             long startTs = System.currentTimeMillis();
             PutObjectResponse response = s3Client.putObject(request, RequestBody.fromBytes(tpMetadata.getAsJsonString().getBytes(StandardCharsets.UTF_8)));
             LOG.info(String.format("Wrote TopicPartitionMetadata to %s in %sms", endpoint.getFullPrefixUri() + "/" + TopicPartitionMetadata.FILENAME, System.currentTimeMillis() - startTs));
             return response.sdkHttpResponse().statusCode() == 200;
+        } catch (S3Exception s3e) {
+            if (s3e.statusCode() == 412) {
+                LOG.error(String.format("Failed to write metadata to endpoint %s because the object has been modified since it was loaded.", endpoint.getFullPrefixUri()), s3e);
+            } else {
+                LOG.error(String.format("Failed to write metadata to endpoint %s", endpoint.getFullPrefixUri()), s3e);
+            }
+            return false;
         } catch (Exception e) {
             LOG.error(String.format("Failed to write metadata to endpoint %s", endpoint.getFullPrefixUri()), e);
             return false;

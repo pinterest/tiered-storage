@@ -8,7 +8,7 @@ import com.pinterest.kafka.tieredstorage.common.metadata.TimeIndex;
 import com.pinterest.kafka.tieredstorage.common.metadata.TopicPartitionMetadata;
 import com.pinterest.kafka.tieredstorage.uploader.KafkaEnvironmentProvider;
 import com.pinterest.kafka.tieredstorage.uploader.SegmentUploaderConfiguration;
-import com.pinterest.kafka.tieredstorage.uploader.TestBase;
+import com.pinterest.kafka.tieredstorage.uploader.TestS3ContainerBase;
 import com.pinterest.kafka.tieredstorage.uploader.leadership.LeadershipWatcher;
 import org.apache.kafka.common.TopicPartition;
 import org.junit.jupiter.api.AfterEach;
@@ -28,12 +28,14 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 
+import static com.pinterest.kafka.tieredstorage.uploader.TestBase.createTestEnvironmentProvider;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 import static org.mockito.Mockito.when;
 
-public class TestS3SegmentManager extends TestBase {
+public class TestS3SegmentManager extends TestS3ContainerBase {
 
     private S3SegmentManager s3SegmentManager;
     private MockS3StorageServiceEndpointProvider endpointProvider;
@@ -212,6 +214,64 @@ public class TestS3SegmentManager extends TestBase {
 
         clearAllObjects(endpoint1.getBucket());
         clearAllObjects(endpoint2.getBucket());
+    }
+
+    @Test
+    void testOptimisticConcurrencyControlWithLoadHash() throws IOException {
+        // Create initial metadata with some entries
+        TopicPartitionMetadata originalMetadata = new TopicPartitionMetadata(tp);
+        TimeIndex timeIndex = new TimeIndex(TimeIndex.TimeIndexType.TOPIC_PARTITION);
+        timeIndex.insertEntry(new TimeIndex.TimeIndexEntry(1000, 100, 0L));
+        timeIndex.insertEntry(new TimeIndex.TimeIndexEntry(2000, 100, 100L));
+        timeIndex.insertEntry(new TimeIndex.TimeIndexEntry(3000, 100, 200L));
+        originalMetadata.updateMetadata(TopicPartitionMetadata.TIMEINDEX_KEY, timeIndex);
+
+        // Write initial metadata to S3
+        boolean writeSuccess = s3SegmentManager.writeMetadataToStorage(originalMetadata);
+        assertTrue(writeSuccess, "Initial metadata write should succeed");
+
+        // Read metadata back (this should set the loadHash)
+        TopicPartitionMetadata readMetadata1 = s3SegmentManager.getTopicPartitionMetadataFromStorage(tp);
+        assertEquals(3, readMetadata1.getTimeIndex().size(), "Should have 3 entries initially");
+
+        // Simulate another process updating metadata by writing different metadata
+        TopicPartitionMetadata conflictingMetadata = new TopicPartitionMetadata(tp);
+        TimeIndex conflictingTimeIndex = new TimeIndex(TimeIndex.TimeIndexType.TOPIC_PARTITION);
+        conflictingTimeIndex.insertEntry(new TimeIndex.TimeIndexEntry(1000, 100, 0L));
+        conflictingTimeIndex.insertEntry(new TimeIndex.TimeIndexEntry(2000, 100, 100L));
+        conflictingTimeIndex.insertEntry(new TimeIndex.TimeIndexEntry(3000, 100, 200L));
+        conflictingTimeIndex.insertEntry(new TimeIndex.TimeIndexEntry(4000, 100, 300L)); // Add new entry
+        conflictingMetadata.updateMetadata(TopicPartitionMetadata.TIMEINDEX_KEY, conflictingTimeIndex);
+        
+        boolean conflictingWriteSuccess = s3SegmentManager.writeMetadataToStorage(conflictingMetadata);
+        assertTrue(conflictingWriteSuccess, "Conflicting metadata write should succeed");
+
+        // Now try to write the original metadata (which has stale loadHash)
+        // This should fail due to hash mismatch
+        readMetadata1.getTimeIndex().insertEntry(new TimeIndex.TimeIndexEntry(5000, 100, 400L));
+        boolean staleWriteSuccess = s3SegmentManager.writeMetadataToStorage(readMetadata1);
+        assertFalse(staleWriteSuccess, "Write with stale loadHash should fail");
+
+        // Verify the metadata in S3 still has the conflicting data (4 entries)
+        TopicPartitionMetadata currentMetadata = s3SegmentManager.getTopicPartitionMetadataFromStorage(tp);
+        assertEquals(4, currentMetadata.getTimeIndex().size(), "Should still have 4 entries from conflicting write");
+
+        // Now read fresh metadata and write - this should succeed
+        TopicPartitionMetadata freshMetadata = s3SegmentManager.getTopicPartitionMetadataFromStorage(tp);
+        freshMetadata.getTimeIndex().insertEntry(new TimeIndex.TimeIndexEntry(6000, 100, 500L));
+        boolean freshWriteSuccess = s3SegmentManager.writeMetadataToStorage(freshMetadata);
+        assertTrue(freshWriteSuccess, "Write with fresh loadHash should succeed");
+
+        // Verify final metadata has 5 entries
+        TopicPartitionMetadata finalMetadata = s3SegmentManager.getTopicPartitionMetadataFromStorage(tp);
+        assertEquals(5, finalMetadata.getTimeIndex().size(), "Should have 5 entries after successful write");
+
+        // Clean up
+        S3StorageServiceEndpoint endpoint = endpointProvider.getStorageServiceEndpointBuilderForTopic(tp.topic())
+                .setTopicPartition(tp)
+                .setPrefixEntropyNumBits(config.getS3PrefixEntropyBits())
+                .build();
+        clearAllObjects(endpoint.getBucket());
     }
 
     /**

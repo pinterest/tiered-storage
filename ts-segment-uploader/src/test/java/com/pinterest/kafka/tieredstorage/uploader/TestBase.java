@@ -1,12 +1,8 @@
 package com.pinterest.kafka.tieredstorage.uploader;
 
-import com.adobe.testing.s3mock.junit5.S3MockExtension;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
-import com.pinterest.kafka.tieredstorage.common.SegmentUtils;
-import com.pinterest.kafka.tieredstorage.common.Utils;
-import com.pinterest.kafka.tieredstorage.common.discovery.s3.S3StorageServiceEndpoint;
 import com.salesforce.kafka.test.junit5.SharedKafkaTestResource;
 import org.apache.kafka.clients.admin.DescribeConfigsResult;
 import org.apache.kafka.common.config.ConfigResource;
@@ -16,31 +12,13 @@ import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.ZooDefs;
 import org.apache.zookeeper.ZooKeeper;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.extension.RegisterExtension;
-import software.amazon.awssdk.auth.credentials.AnonymousCredentialsProvider;
-import software.amazon.awssdk.core.ResponseInputStream;
-import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration;
-import software.amazon.awssdk.core.sync.RequestBody;
-import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3AsyncClient;
 import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.s3.model.CreateBucketRequest;
-import software.amazon.awssdk.services.s3.model.GetObjectRequest;
-import software.amazon.awssdk.services.s3.model.GetObjectResponse;
-import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
-import software.amazon.awssdk.services.s3.model.ListObjectsV2Response;
-import software.amazon.awssdk.services.s3.model.PutObjectRequest;
-import software.amazon.awssdk.services.s3.model.PutObjectResponse;
 
 import java.io.IOException;
-import java.net.URI;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -48,40 +26,10 @@ import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
 public class TestBase {
-    private static final Logger LOG = LogManager.getLogger(TestBase.class.getName());
-    @RegisterExtension
-    protected static final S3MockExtension S3_MOCK =
-            S3MockExtension.builder().silent().withSecureConnection(false).build();
-    protected static final String S3_BUCKET = "test-bucket";
-    protected static final String TEST_CLUSTER = "test-cluster-base";
-    protected static final String TEST_TOPIC_A = "test_topic_a";
+    public static final String TEST_CLUSTER = "test-cluster-base";
+    public static final String TEST_TOPIC_A = "test_topic_a";
     protected static final String TEST_TOPIC_B = "test_topic_b";
     protected static final Path TEST_DATA_LOG_DIRECTORY_PATH = Paths.get("src/test/resources/log_segments/test_topic_a-0");
-    protected S3Client s3Client;
-    protected S3AsyncClient s3AsyncClient;
-
-    @BeforeEach
-    public void setup() throws Exception {
-        s3Client = S3Client.builder()
-                .endpointOverride(URI.create(S3_MOCK.getServiceEndpoint()))
-                .region(Region.US_EAST_1)
-                .credentialsProvider(AnonymousCredentialsProvider.create())
-                .build();
-        s3Client.createBucket(CreateBucketRequest.builder().bucket(S3_BUCKET).build());
-        s3AsyncClient = S3AsyncClient.builder()
-                .endpointOverride(URI.create(S3_MOCK.getServiceEndpoint()))
-                .region(Region.US_EAST_1)
-                .credentialsProvider(AnonymousCredentialsProvider.create())
-                .build();
-        s3AsyncClient.createBucket(CreateBucketRequest.builder().bucket(S3_BUCKET).build());
-    }
-
-    @AfterEach
-    public void tearDown() throws IOException, InterruptedException, ExecutionException {
-        Thread.sleep(5000);
-        clearAllObjects(S3_BUCKET);
-        s3Client.close();
-    }
 
     public static void overrideS3ClientForFileDownloader(S3Client s3Client) {
         S3FileDownloader.overrideS3Client(s3Client);
@@ -89,18 +37,6 @@ public class TestBase {
 
     public static void overrideS3AsyncClientForFileUploader(S3AsyncClient s3AsyncClient) {
         MultiThreadedS3FileUploader.overrideS3Client(s3AsyncClient);
-    }
-
-    public static S3AsyncClient getS3AsyncClientWithCustomApiCallTimeout(long timeoutMs) {
-        ClientOverrideConfiguration overrideConfiguration = ClientOverrideConfiguration.builder()
-                .apiCallTimeout(Duration.ofMillis(1L))
-                .build();
-        return S3AsyncClient.builder()
-                .endpointOverride(URI.create(S3_MOCK.getServiceEndpoint()))
-                .region(Region.US_EAST_1)
-                .credentialsProvider(AnonymousCredentialsProvider.create())
-                .overrideConfiguration(overrideConfiguration)
-                .build();
     }
 
     public static KafkaEnvironmentProvider createTestEnvironmentProvider(String suppliedZkConnect, String suppliedLogDir) {
@@ -228,39 +164,6 @@ public class TestBase {
         return result.all().get().get(configResource).get(configName).value();
     }
 
-    protected static ResponseInputStream<GetObjectResponse> getObjectResponse(String bucket, String key, S3Client s3Client) {
-        return s3Client.getObject(GetObjectRequest.builder()
-                .bucket(bucket)
-                .key(key)
-                .build()
-        );
-    }
-
-    protected static ListObjectsV2Response getListObjectsV2Response(String bucket, String prefix, S3AsyncClient s3AsyncClient) throws ExecutionException, InterruptedException {
-        return s3AsyncClient.listObjectsV2(ListObjectsV2Request.builder().bucket(bucket).prefix(prefix).build()).get();
-    }
-
-    protected static PutObjectResponse putObjectResponse(String bucket, String prefix, S3Client s3Client, String content) {
-        return s3Client.putObject(PutObjectRequest.builder().bucket(bucket).key(prefix).build(), RequestBody.fromBytes(content.getBytes(StandardCharsets.UTF_8)));
-    }
-
-    protected void putEmptyObjects(long minOffset, long maxOffset, long numOffsetsPerFile, S3StorageServiceEndpoint endpoint) {
-        for (long i = minOffset; i <= maxOffset; i += numOffsetsPerFile) {
-            LOG.info(String.format("Put empty object to bucket=%s, key=%s", endpoint.getBucket(), getS3ObjectKey(endpoint, i, SegmentUtils.SegmentFileType.INDEX)));
-            s3Client.putObject(PutObjectRequest.builder().bucket(endpoint.getBucket()).key(getS3ObjectKey(endpoint, i, SegmentUtils.SegmentFileType.INDEX)).build(), RequestBody.empty());
-
-            LOG.info(String.format("Put empty object to bucket=%s, key=%s", endpoint.getBucket(), getS3ObjectKey(endpoint, i, SegmentUtils.SegmentFileType.LOG)));
-            s3Client.putObject(PutObjectRequest.builder().bucket(endpoint.getBucket()).key(getS3ObjectKey(endpoint, i, SegmentUtils.SegmentFileType.LOG)).build(), RequestBody.empty());
-
-            LOG.info(String.format("Put empty object to bucket=%s, key=%s", endpoint.getBucket(), getS3ObjectKey(endpoint, i, SegmentUtils.SegmentFileType.TIMEINDEX)));
-            s3Client.putObject(PutObjectRequest.builder().bucket(endpoint.getBucket()).key(getS3ObjectKey(endpoint, i, SegmentUtils.SegmentFileType.TIMEINDEX)).build(), RequestBody.empty());
-        }
-    }
-
-    protected static String getS3ObjectKey(S3StorageServiceEndpoint endpoint, long offset, SegmentUtils.SegmentFileType fileType) {
-        return endpoint.getFullPrefix() + "/" + Utils.getZeroPaddedOffset(offset) + "." + fileType.toString().toLowerCase();
-    }
-
     protected static void reassignPartitions(SharedKafkaTestResource sharedKafkaTestResource, Map<String, Map<Integer, List<Integer>>> assignmentMap) throws IOException, InterruptedException, KeeperException {
         String path = "/admin/reassign_partitions";
         ZooKeeper zk = new ZooKeeper(sharedKafkaTestResource.getZookeeperConnectString(), 10000, null);
@@ -319,13 +222,5 @@ public class TestBase {
 
     public static void setProperty(SegmentUploaderConfiguration config, String key, String value) {
         config.setProperty(key, value);
-    }
-
-    public void clearAllObjects(String bucket) {
-        s3Client.listObjectsV2Paginator(builder -> builder.bucket(bucket).prefix("/")).stream().forEach(page -> {
-            page.contents().forEach(object -> {
-                s3Client.deleteObject(builder -> builder.bucket(bucket).key(object.key()));
-            });
-        });
     }
 }

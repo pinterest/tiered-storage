@@ -26,17 +26,11 @@ public class TestLeadershipWatcher extends TestBase {
     private LeadershipWatcher mockLeadershipWatcher;
 
     @BeforeEach
-    @Override
     public void setup() throws Exception {
-        super.setup();
 
         // environment provider setup
         KafkaEnvironmentProvider environmentProvider = createTestEnvironmentProvider("sampleZkConnect", "sampleLogDir");
         environmentProvider.load();
-
-        // override s3 client
-        overrideS3ClientForFileDownloader(s3Client);
-        overrideS3AsyncClientForFileUploader(s3AsyncClient);
 
         // endpoint provider setup
         MockS3StorageServiceEndpointProvider endpointProvider = new MockS3StorageServiceEndpointProvider();
@@ -44,10 +38,9 @@ public class TestLeadershipWatcher extends TestBase {
 
         // s3 uploader setup
         SegmentUploaderConfiguration config = getSegmentUploaderConfiguration(TEST_CLUSTER);
-        S3FileUploader s3FileUploader = new MultiThreadedS3FileUploader(endpointProvider, config, environmentProvider);
 
         // create watchers
-        DirectoryTreeWatcher directoryTreeWatcher = new MockDirectoryTreeWatcher(watchedTopicPartitions, s3FileUploader, config, environmentProvider);
+        DirectoryTreeWatcher directoryTreeWatcher = new MockDirectoryTreeWatcher(watchedTopicPartitions, config, environmentProvider);
         mockLeadershipWatcher = new MockLeadershipWatcher(directoryTreeWatcher, config, environmentProvider);
     }
 
@@ -100,7 +93,7 @@ public class TestLeadershipWatcher extends TestBase {
         }
 
         @Override
-        protected void initialize() throws IOException, InterruptedException {
+        protected void initialize() {
             // no-op
         }
 
@@ -117,8 +110,8 @@ public class TestLeadershipWatcher extends TestBase {
 
         private final Set<TopicPartition> watchedTopicPartitions;
 
-        public MockDirectoryTreeWatcher(Set<TopicPartition> watchedTopicPartitions, S3FileUploader s3FileUploader, SegmentUploaderConfiguration config, KafkaEnvironmentProvider environmentProvider) throws Exception {
-            super(s3FileUploader, config, environmentProvider);
+        public MockDirectoryTreeWatcher(Set<TopicPartition> watchedTopicPartitions, SegmentUploaderConfiguration config, KafkaEnvironmentProvider environmentProvider) throws Exception {
+            super(config, environmentProvider);
             this.watchedTopicPartitions = watchedTopicPartitions;
         }
 

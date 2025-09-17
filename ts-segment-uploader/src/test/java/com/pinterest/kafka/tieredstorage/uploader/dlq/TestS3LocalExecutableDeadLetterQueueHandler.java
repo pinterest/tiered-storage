@@ -4,6 +4,7 @@ import com.pinterest.kafka.tieredstorage.common.SegmentUtils;
 import com.pinterest.kafka.tieredstorage.uploader.DirectoryTreeWatcher;
 import com.pinterest.kafka.tieredstorage.uploader.SegmentUploaderConfiguration;
 import com.pinterest.kafka.tieredstorage.uploader.TestBase;
+import com.pinterest.kafka.tieredstorage.uploader.TestS3ContainerBase;
 import org.apache.kafka.common.TopicPartition;
 import org.junit.jupiter.api.Test;
 
@@ -20,11 +21,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
 
+import static com.pinterest.kafka.tieredstorage.uploader.TestBase.setProperty;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-public class TestS3LocalExecutableDeadLetterQueueHandler extends TestBase {
+public class TestS3LocalExecutableDeadLetterQueueHandler extends TestS3ContainerBase {
 
     /**
      * Test the handler by having it send many tasks concurrently to a local executable file.

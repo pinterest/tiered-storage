@@ -124,6 +124,22 @@ public class DirectoryTreeWatcher implements Runnable {
         this.deadLetterQueueHandler = DeadLetterQueueHandler.createHandler(config);
     }
 
+    // This constructor should only be used for tests
+    @VisibleForTesting
+    protected DirectoryTreeWatcher(SegmentUploaderConfiguration config, KafkaEnvironmentProvider environmentProvider) throws Exception {
+        this.environmentProvider = environmentProvider;
+        this.topLevelPath = Paths.get(environmentProvider.logDir());
+        this.watchService = FileSystems.getDefault().newWatchService();
+        activeSegment = new HashMap<>();
+        segmentsQueue = new HashMap<>();
+        this.s3FileUploader = null;
+        this.s3UploadHandler = Executors.newSingleThreadExecutor();
+        this.s3FileDownloader = null;
+        heartbeat = new Heartbeat("watcher.logs", config, environmentProvider);
+        this.config = config;
+        this.deadLetterQueueHandler = DeadLetterQueueHandler.createHandler(config);
+    }
+
     /**
      * Start the s3 upload handler thread and register the top level path for watching.
      * @throws IOException

@@ -45,13 +45,19 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 
+import static com.pinterest.kafka.tieredstorage.uploader.TestBase.TEST_DATA_LOG_DIRECTORY_PATH;
+import static com.pinterest.kafka.tieredstorage.uploader.TestBase.TEST_TOPIC_B;
+import static com.pinterest.kafka.tieredstorage.uploader.TestBase.createTopicAndVerify;
+import static com.pinterest.kafka.tieredstorage.uploader.TestBase.deleteTopicAndVerify;
+import static com.pinterest.kafka.tieredstorage.uploader.TestBase.overrideS3AsyncClientForFileUploader;
+import static com.pinterest.kafka.tieredstorage.uploader.TestBase.overrideS3ClientForFileDownloader;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
-public class TestDirectoryTreeWatcher extends TestBase {
+public class TestDirectoryTreeWatcher extends TestS3ContainerBase {
     @RegisterExtension
     private static final SharedKafkaTestResource sharedKafkaTestResource = new SharedKafkaTestResource()
             .withBrokerProperty("log.segment.bytes", "30000")
@@ -67,7 +73,7 @@ public class TestDirectoryTreeWatcher extends TestBase {
         super.setup();
 
         // environment provider setup
-        environmentProvider = createTestEnvironmentProvider(sharedKafkaTestResource);
+        environmentProvider = TestBase.createTestEnvironmentProvider(sharedKafkaTestResource);
         environmentProvider.load();
 
         // override s3 client

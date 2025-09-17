@@ -28,6 +28,7 @@ public class TopicPartitionMetadata implements MetadataJsonSerializable {
     private static final Gson GSON = new GsonBuilder().registerTypeAdapter(TopicPartitionMetadata.class, new TopicPartitionMetadataDeserializer()).create();
     private final TopicPartition topicPartition;
     private final ConcurrentHashMap<String, Object> metadata;
+    private String loadHash;
 
     public TopicPartitionMetadata(TopicPartition partition) {
         this(partition, new ConcurrentHashMap<>());
@@ -36,6 +37,14 @@ public class TopicPartitionMetadata implements MetadataJsonSerializable {
     public TopicPartitionMetadata(TopicPartition partition, ConcurrentHashMap<String, Object> metadata) {
         this.topicPartition = partition;
         this.metadata = metadata;
+    }
+
+    public String getLoadHash() {
+        return loadHash;
+    }
+
+    public void setLoadHash(String hash) {
+        this.loadHash = hash;
     }
 
     public void updateMetadata(String key, MetadataJsonSerializable value) {
