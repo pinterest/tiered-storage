@@ -18,8 +18,16 @@ import java.nio.channels.ReadableByteChannel;
 import java.util.concurrent.ConcurrentSkipListSet;
 
 /**
- * Represents a time index file that maps timestamps to relative offsets.
- * Each entry in the file is 12 bytes: 8 bytes for timestamp (long) + 4 bytes for relative offset (int).
+ * Time-index structure for Kafka segments and topic-partitions.
+ *
+ * <p>Stores ordered pairs of timestamp, relative offset, and base offset
+ * to enable efficient lookup of the segment position nearest to a target timestamp.
+ * 
+ * Instances can be constructed for either a single segment
+ * or for an entire topic-partition via {@link TimeIndexType}.</p>
+ * 
+ * When TimeIndexType is TOPIC_PARTITION, the entries are ordered by timestamp and base offset.
+ * When TimeIndexType is SEGMENT, the entries are ordered by relative offset since the base offset is the same for all entries in a segment.
  */
 
 public class TimeIndex implements MetadataJsonSerializable {
@@ -31,6 +39,9 @@ public class TimeIndex implements MetadataJsonSerializable {
     private final TimeIndexType timeIndexType;
     private int size = 0;
 
+    /**
+     * Type of the time index: segment or topic-partition scope.
+     */
     public enum TimeIndexType {
         SEGMENT, TOPIC_PARTITION;
     }
@@ -42,7 +53,9 @@ public class TimeIndex implements MetadataJsonSerializable {
     }
     
     /**
-     * Create a new empty TimeIndex
+     * Create a new empty TimeIndex.
+     *
+     * @param timeIndexType scope of this time index
      */
     public TimeIndex(TimeIndexType timeIndexType) {
         this.entries = new ConcurrentSkipListSet<>();
@@ -50,15 +63,22 @@ public class TimeIndex implements MetadataJsonSerializable {
         this.timeIndexType = timeIndexType;
     }
 
+    /**
+     * Return the scope of this time index.
+     *
+     * @return the {@link TimeIndexType} for this index
+     */
     public TimeIndexType getTimeIndexType() {
         return timeIndexType;
     }
     
     /**
-     * Load a TimeIndex from an InputStream
-     * @param inputStream the input stream containing the time index data
-     * @return a TimeIndex instance
-     * @throws IOException if there's an error reading from the stream
+     * Load a segment-scoped TimeIndex from the native .timeindex format for a segment.
+     *
+     * @param inputStream the input stream containing the timeindex bytes
+     * @param baseOffset the base offset of the segment that produced the timeindex
+     * @return a TimeIndex instance populated from the stream
+     * @throws IOException if an error occurs while reading from the stream
      */
     public static TimeIndex loadFromSegmentTimeIndex(InputStream inputStream, long baseOffset) throws IOException {
         ConcurrentSkipListSet<TimeIndexEntry> entries = new ConcurrentSkipListSet<>();
@@ -81,8 +101,9 @@ public class TimeIndex implements MetadataJsonSerializable {
     }
     
     /**
-     * Get the last entry in the time index. This corresponds to the last record in the segment.
-     * @return the last TimeIndexEntry, or null if the index is empty
+     * Return the last entry in the time index.
+     *
+     * @return the last {@link TimeIndexEntry}, or null if the index is empty
      */
     public TimeIndexEntry getLastEntry() {
         if (entries.isEmpty()) {
@@ -92,8 +113,9 @@ public class TimeIndex implements MetadataJsonSerializable {
     }
     
     /**
-     * Get the first entry in the time index. This does not necessarily correspond to the first record in the segment.
-     * @return the first TimeIndexEntry, or null if the index is empty
+     * Return the first entry in the time index.
+     *
+     * @return the first {@link TimeIndexEntry}, or null if the index is empty
      */
     public TimeIndexEntry getFirstEntry() {
         if (entries.isEmpty()) {
@@ -103,15 +125,17 @@ public class TimeIndex implements MetadataJsonSerializable {
     }
     
     /**
-     * Get the number of entries in this time index
-     * @return the number of entries
+     * Return the number of entries.
+     *
+     * @return entry count
      */
     public int size() {
         return size;
     }
     
     /**
-     * Check if the time index is empty
+     * Whether the time index has no entries.
+     *
      * @return true if the index contains no entries
      */
     public boolean isEmpty() {
@@ -119,10 +143,11 @@ public class TimeIndex implements MetadataJsonSerializable {
     }
     
     /**
-     * Get an entry by index
-     * @param index the index of the entry (0-based)
-     * @return the TimeIndexEntry at the specified index
-     * @throws IndexOutOfBoundsException if the index is out of range
+     * Return an entry by ordinal position.
+     *
+     * @param index zero-based position
+     * @return the {@link TimeIndexEntry} at the specified position
+     * @throws IndexOutOfBoundsException if index is out of range
      */
     public TimeIndexEntry getEntry(int index) {
         if (index < 0 || index >= entries.size()) {
@@ -140,19 +165,19 @@ public class TimeIndex implements MetadataJsonSerializable {
     }
     
     /**
-     * Get all entries in the time index
-     * @return a list of all TimeIndexEntry objects
+     * Return a defensive copy of all entries.
+     *
+     * @return copy of entries in ascending order
      */
     public ConcurrentSkipListSet<TimeIndexEntry> getEntriesCopy() {
         return new ConcurrentSkipListSet<>(entries);
     }
     
     /**
-     * Insert a new entry into the time index while preserving ascending order.
-     * The ConcurrentSkipListSet automatically maintains sorted order by timestamp (and relativeOffset as secondary sort).
-     * 
-     * @param entry the TimeIndexEntry to insert
-     * @return true if the entry was added, false if it was already present
+     * Insert a new entry while preserving ascending order.
+     *
+     * @param entry the {@link TimeIndexEntry} to insert
+     * @return true if added, false if already present
      */
     public boolean insertEntry(TimeIndexEntry entry) {
         if (entries.add(entry)) {
@@ -163,9 +188,10 @@ public class TimeIndex implements MetadataJsonSerializable {
     }
 
     /**
-     * Remove the given entry from the timeindex while preserving ascending order.
-     * @param entry
-     * @return true if the entry was removed, false otherwise
+     * Remove the given entry.
+     *
+     * @param entry entry to remove
+     * @return true if removed, false otherwise
      */
     public boolean removeEntry(TimeIndexEntry entry) {
         if (entries.remove(entry)) {
@@ -175,6 +201,12 @@ public class TimeIndex implements MetadataJsonSerializable {
         return false;
     }
     
+    /**
+     * Remove and return entries strictly older than the given timestamp.
+     *
+     * @param timestamp exclusive upper bound for timestamps to remove
+     * @return removed entries in ascending order
+     */
     public ConcurrentSkipListSet<TimeIndexEntry> removeAndGetEntriesOlderThanTimestamp(long timestamp) {
         ConcurrentSkipListSet<TimeIndexEntry> older = new ConcurrentSkipListSet<>(entries.headSet(new TimeIndexEntry(timestamp, -1, -1)));
         entries.removeAll(older);
@@ -182,6 +214,12 @@ public class TimeIndex implements MetadataJsonSerializable {
         return older;
     }
 
+    /**
+     * Remove entries whose baseOffset is less than or equal to the provided value.
+     *
+     * @param baseOffset inclusive upper bound
+     * @return number of entries removed
+     */
     public int removeEntriesBeforeBaseOffsetInclusive(long baseOffset) {
         entries.removeIf(entry -> entry.getBaseOffset() <= baseOffset);
         int removed = size - entries.size();
@@ -189,16 +227,21 @@ public class TimeIndex implements MetadataJsonSerializable {
         return removed;
     }
 
+    /**
+     * Return the entry with largest timestamp strictly less than the target.
+     *
+     * @param timestamp target timestamp
+     * @return floor entry strictly smaller than timestamp, or null
+     */
     public TimeIndexEntry getHighestEntrySmallerThanTimestamp(long timestamp) {
         return entries.floor(new TimeIndexEntry(timestamp, Integer.MAX_VALUE, Integer.MAX_VALUE));
     }
     
     /**
-     * Find the entry with the largest timestamp that is less than or equal to the target timestamp.
-     * This is useful for finding the segment position for a given timestamp.
-     * 
-     * @param targetTimestamp the timestamp to search for
-     * @return the TimeIndexEntry with the largest timestamp less than or equal to targetTimestamp, or null if no such entry exists
+     * Find the entry with the largest timestamp less than or equal to the target.
+     *
+     * @param targetTimestamp timestamp to search for
+     * @return floor entry, or null if no such entry exists
      */
     public TimeIndexEntry findEntryForTimestamp(long targetTimestamp) {
         // Use ConcurrentSkipListSet's floor method for efficient lookup
@@ -210,31 +253,39 @@ public class TimeIndex implements MetadataJsonSerializable {
     }
     
     /**
-     * Find the relative offset for a given timestamp using ConcurrentSkipListSet's efficient lookup.
-     * This leverages the sorted nature of ConcurrentSkipListSet for O(log n) performance.
-     * 
-     * @param targetTimestamp the timestamp to search for
-     * @return the relative offset for the largest timestamp less than or equal to targetTimestamp, or -1 if no such entry exists
+     * Return the relative offset for the floor of a target timestamp.
+     *
+     * @param targetTimestamp timestamp to search for
+     * @return relative offset, or -1 if no floor entry exists
      */
     public int getRelativeOffsetForTimestamp(long targetTimestamp) {
         TimeIndexEntry entry = findEntryForTimestamp(targetTimestamp);
         return entry != null ? entry.getRelativeOffset() : -1;
     }
 
+    /** {@inheritDoc} */
     @Override
     public JsonObject getAsJsonObject() {
         return GSON.fromJson(getAsJsonString(), JsonObject.class);
     }
 
+    /** {@inheritDoc} */
     @Override
     public String getAsJsonString() {
         return GSON.toJson(this);
     }
 
+    /**
+     * Deserialize a topic-partition-scoped TimeIndex from JSON. This is typically the metadata file for a topic-partition residing in remote storage.
+     *
+     * @param jsonString json string for a TimeIndex
+     * @return deserialized TimeIndex
+     */
     public static TimeIndex loadFromJson(String jsonString) {
         return GSON.fromJson(jsonString, TimeIndex.class);
     }
 
+    /** {@inheritDoc} */
     @Override
     public String toString() {
         return String.format("TimeIndex{entries=%d, firstEntry=%s, lastEntry=%s}",
@@ -243,6 +294,7 @@ public class TimeIndex implements MetadataJsonSerializable {
                 isEmpty() ? "null" : getLastEntry());
     }
 
+    /** {@inheritDoc} */
     @Override
     public boolean equals(Object other) {
         if (this == other) return true;
@@ -251,14 +303,20 @@ public class TimeIndex implements MetadataJsonSerializable {
     }
 
     /**
-     * Represents a single entry in a Kafka time index file.
-     * Each entry contains a timestamp and relative offset.
+     * An ordered entry describing a timestamp and relative offset for a segment.
      */
     public static class TimeIndexEntry implements Comparable<TimeIndexEntry> {
         private final long timestamp;
         private final int relativeOffset;
         private final long baseOffset;
         
+        /**
+         * Construct a new entry.
+         *
+         * @param timestamp timestamp in milliseconds since epoch
+         * @param relativeOffset relative offset within the segment
+         * @param baseOffset base offset of the segment
+         */
         public TimeIndexEntry(long timestamp, int relativeOffset, long baseOffset) {
             this.timestamp = timestamp;
             this.relativeOffset = relativeOffset;
@@ -266,7 +324,8 @@ public class TimeIndex implements MetadataJsonSerializable {
         }
         
         /**
-         * Get the timestamp for this entry
+         * Return the timestamp for this entry.
+         *
          * @return timestamp in milliseconds since epoch
          */
         public long getTimestamp() {
@@ -274,22 +333,30 @@ public class TimeIndex implements MetadataJsonSerializable {
         }
         
         /**
-         * Get the relative offset for this entry
+         * Return the relative offset for this entry.
+         *
          * @return relative offset within the segment
          */
         public int getRelativeOffset() {
             return relativeOffset;
         }
 
+        /**
+         * Return the base offset for this entry.
+         *
+         * @return base offset of the segment this entry belongs to
+         */
         public long getBaseOffset() {
             return baseOffset;
         }
         
+        /** {@inheritDoc} */
         @Override
         public String toString() {
             return String.format("TimeIndexEntry{timestamp=%d, relativeOffset=%d, baseOffset=%d}", timestamp, relativeOffset, baseOffset);
         }
         
+        /** {@inheritDoc} */
         @Override
         public boolean equals(Object obj) {
             if (this == obj) return true;
@@ -298,11 +365,13 @@ public class TimeIndex implements MetadataJsonSerializable {
             return timestamp == that.timestamp && relativeOffset == that.relativeOffset;
         }
         
+        /** {@inheritDoc} */
         @Override
         public int hashCode() {
             return Long.hashCode(timestamp) ^ Long.hashCode(baseOffset) ^ Integer.hashCode(relativeOffset);
         }
         
+        /** {@inheritDoc} */
         @Override
         public int compareTo(TimeIndexEntry other) {
             // Primary sort by timestamp

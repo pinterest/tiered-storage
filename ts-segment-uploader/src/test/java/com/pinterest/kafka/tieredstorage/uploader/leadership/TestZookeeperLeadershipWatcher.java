@@ -3,8 +3,6 @@ package com.pinterest.kafka.tieredstorage.uploader.leadership;
 import com.pinterest.kafka.tieredstorage.common.discovery.s3.MockS3StorageServiceEndpointProvider;
 import com.pinterest.kafka.tieredstorage.uploader.DirectoryTreeWatcher;
 import com.pinterest.kafka.tieredstorage.uploader.KafkaEnvironmentProvider;
-import com.pinterest.kafka.tieredstorage.uploader.MultiThreadedS3FileUploader;
-import com.pinterest.kafka.tieredstorage.uploader.S3FileUploader;
 import com.pinterest.kafka.tieredstorage.uploader.SegmentUploaderConfiguration;
 import com.pinterest.kafka.tieredstorage.uploader.TestBase;
 import com.salesforce.kafka.test.junit5.SharedKafkaTestResource;
@@ -14,14 +12,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
-import java.io.IOException;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ExecutionException;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**

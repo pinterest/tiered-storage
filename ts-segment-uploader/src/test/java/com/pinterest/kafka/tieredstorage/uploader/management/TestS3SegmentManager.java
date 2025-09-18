@@ -71,6 +71,10 @@ public class TestS3SegmentManager extends TestS3ContainerBase {
         super.tearDown();
     }
 
+    /**
+     * Test that the metadata is retrieved from S3 correctly.
+     * @throws IOException
+     */
     @Test
     void testGetTopicMetadataFromStorage() throws IOException {
         // put empty metadata
@@ -102,6 +106,10 @@ public class TestS3SegmentManager extends TestS3ContainerBase {
         clearAllObjects(endpoint.getBucket());
     }
 
+    /**
+     * Test that the metadata is written to S3 correctly.
+     * @throws IOException
+     */
     @Test
     void testWriteMetadataToStorage() throws IOException {
         TopicPartitionMetadata metadata = new TopicPartitionMetadata(tp);
@@ -125,6 +133,11 @@ public class TestS3SegmentManager extends TestS3ContainerBase {
         clearAllObjects(endpoint.getBucket());
     }
 
+    /**
+     * Test that the segments are deleted from S3 correctly.
+     * @throws ExecutionException
+     * @throws InterruptedException
+     */
     @Test
     void testDeleteSegmentsBeforeBaseOffsetInclusive() throws ExecutionException, InterruptedException {
         S3StorageServiceEndpoint endpoint = endpointProvider.getStorageServiceEndpointBuilderForTopic(tp.topic())
@@ -165,6 +178,15 @@ public class TestS3SegmentManager extends TestS3ContainerBase {
         clearAllObjects(endpoint.getBucket());
     }
 
+    /**
+     * Test that the segments are deleted from S3 correctly when there are partitions with the same prefix entropy hash and start with the same character.
+     * For example, if we have partitions test_topic_a-1 and test_topic_a-17 which happen to have the same prefix entropy hash and both start with '1',
+     * we should not delete segments from partition test_topic_a-17 when deleting segments from partition test_topic_a-1. This is an edge case to ensure that 
+     * listObjects operation includes a trailing slash to ensure we don't accidentally delete objects in other partitions with the same prefix.
+     * 
+     * @throws ExecutionException
+     * @throws InterruptedException
+     */
     @Test
     void testDeleteSegmentsBeforeBaseOffsetInclusiveWithSimilarPartitions() throws ExecutionException, InterruptedException {
         // Find two partitions that have the same prefix entropy hash
@@ -216,6 +238,10 @@ public class TestS3SegmentManager extends TestS3ContainerBase {
         clearAllObjects(endpoint2.getBucket());
     }
 
+    /**
+     * Test that optimistic concurrency control with load hash works as expected.
+     * @throws IOException
+     */
     @Test
     void testOptimisticConcurrencyControlWithLoadHash() throws IOException {
         // Create initial metadata with some entries

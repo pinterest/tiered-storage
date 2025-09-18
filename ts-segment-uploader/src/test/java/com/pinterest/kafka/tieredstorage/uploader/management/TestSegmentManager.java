@@ -27,7 +27,6 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.ExecutionException;
 
 import static com.pinterest.kafka.tieredstorage.uploader.TestBase.TEST_CLUSTER;
 import static com.pinterest.kafka.tieredstorage.uploader.TestBase.TEST_TOPIC_A;
@@ -65,6 +64,10 @@ public class TestSegmentManager {
         TestBase.deleteDirectory(DIRECTORY.toPath());
     }
 
+    /**
+     * Test that garbage collection works as expected.
+     * @throws IOException
+     */
     @Test
     public void testGarbageCollection() throws IOException {
         LeadershipWatcher leadershipWatcher = Mockito.mock(LeadershipWatcher.class);
@@ -165,6 +168,10 @@ public class TestSegmentManager {
         assertFalse(TopicPartitionMetadataUtil.isLocked(tp));
     }
 
+    /**
+     * Test that no expired segments are deleted when there are no expired entries in the time index.
+     * @throws IOException
+     */
     @Test
     void testNoExpiredSegments() throws IOException {
         LeadershipWatcher leadershipWatcher = Mockito.mock(LeadershipWatcher.class);
@@ -212,6 +219,10 @@ public class TestSegmentManager {
         assertFalse(TopicPartitionMetadataUtil.isLocked(tp));
     }
 
+    /**
+     * Test that no expired segments are deleted when the metadata update fails.
+     * @throws IOException
+     */
     @Test
     void testMetadataUpdateFailureSkipsSegmentDeletion() throws IOException {
         LeadershipWatcher leadershipWatcher = Mockito.mock(LeadershipWatcher.class);

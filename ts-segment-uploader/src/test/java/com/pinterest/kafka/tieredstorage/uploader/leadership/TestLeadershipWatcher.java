@@ -3,8 +3,6 @@ package com.pinterest.kafka.tieredstorage.uploader.leadership;
 import com.pinterest.kafka.tieredstorage.common.discovery.s3.MockS3StorageServiceEndpointProvider;
 import com.pinterest.kafka.tieredstorage.uploader.DirectoryTreeWatcher;
 import com.pinterest.kafka.tieredstorage.uploader.KafkaEnvironmentProvider;
-import com.pinterest.kafka.tieredstorage.uploader.MultiThreadedS3FileUploader;
-import com.pinterest.kafka.tieredstorage.uploader.S3FileUploader;
 import com.pinterest.kafka.tieredstorage.uploader.SegmentUploaderConfiguration;
 import com.pinterest.kafka.tieredstorage.uploader.TestBase;
 import org.apache.kafka.common.TopicPartition;

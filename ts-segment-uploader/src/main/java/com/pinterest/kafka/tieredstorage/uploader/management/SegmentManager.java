@@ -24,6 +24,10 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 
+/**
+ * Abstract class to manage the remote segments and metadata. The concrete implementation is determined by the
+ * {@link #SEGMENT_MANAGER_CLASS_CONFIG_KEY} configuration.
+ */
 public abstract class SegmentManager {
     private static final Logger LOG = LogManager.getLogger(SegmentManager.class.getName());
     private static final String SEGMENT_MANAGER_CLASS_CONFIG_KEY = TS_SEGMENT_UPLOADER_PREFIX + "." + "segment.manager.class";
@@ -33,6 +37,19 @@ public abstract class SegmentManager {
     protected final StorageServiceEndpointProvider endpointProvider;
     protected final LeadershipWatcher leadershipWatcher;
 
+    /**
+     * Create a new SegmentManager instance.
+     *
+     * <p>If garbage collection is enabled by configuration, this constructor also
+     * initializes a single-threaded scheduled executor to run GC in the background
+     * after {@link #start()} is invoked. Finally, it calls {@link #initialize()} so
+     * that implementations can perform any setup.</p>
+     *
+     * @param config uploader configuration
+     * @param environmentProvider provider for cluster and broker identity
+     * @param endpointProvider provider for storage service endpoints
+     * @param leadershipWatcher watcher that reports the set of leading partitions
+     */
     public SegmentManager(SegmentUploaderConfiguration config, KafkaEnvironmentProvider environmentProvider, StorageServiceEndpointProvider endpointProvider, LeadershipWatcher leadershipWatcher) {
         this.config = config;
         this.environmentProvider = environmentProvider;
@@ -45,8 +62,19 @@ public abstract class SegmentManager {
         initialize();
     }
 
+    /**
+     * Perform implementation-specific initialization. Called from the constructor.
+     */
     public abstract void initialize();
 
+    /**
+     * Run one garbage collection cycle across all leading partitions.
+     *
+     * <p>The GC process determines a cutoff timestamp from the configured retention,
+     * converts it to a cutoff offset using metadata, updates the metadata, and then
+     * deletes expired segment files up to and including the cutoff offset. The process
+     * is best-effort and records metrics and logs for success and failure cases.</p>
+     */
     public void runGarbageCollection() {
         long startTs = System.currentTimeMillis();
         Set<TopicPartition> leadingPartitions = leadershipWatcher.getLeadingPartitions();
@@ -171,10 +199,38 @@ public abstract class SegmentManager {
         LOG.info(String.format("Completed garbage collection for all %s topicPartitions in %sms", leadingPartitions.size(), cycleDuration));
     }
 
+    /**
+     * Load the current {@link TopicPartitionMetadata} for the given topic-partition from the
+     * underlying storage system. The implementation of this method should set the {@link TopicPartitionMetadata#getLoadHash()} 
+     * to a unique hash of the metadata at the time of read / load to enable optimistic concurrency control when writing.
+     *
+     * @param topicPartition topic-partition for which to load metadata
+     * @return the loaded metadata, or null if no metadata exists yet
+     * @throws IOException if metadata cannot be read due to I/O issues
+     */
     public abstract TopicPartitionMetadata getTopicPartitionMetadataFromStorage(TopicPartition topicPartition) throws IOException;
 
+    /**
+     * Persist the provided {@link TopicPartitionMetadata} to the underlying storage system. This method should not throw an exception if the write fails.
+     * Instead, it should return false to indicate failure since metadata updates are best-effort.
+     * 
+     * The implementation of this method should also implement optimistic concurrency control by checking the {@link TopicPartitionMetadata#getLoadHash()} which was set during
+     * read / load in the {@link #getTopicPartitionMetadataFromStorage(TopicPartition)} method. It should only overwrite the metadata if the existing metadata has the same load hash prior
+     * to this write.
+     *
+     * @param tpMetadata metadata to write
+     * @return true if the write succeeds, false otherwise
+     */
     public abstract boolean writeMetadataToStorage(TopicPartitionMetadata tpMetadata);
 
+    /**
+     * Delete all segment files for the given topic-partition whose base offsets are less than or equal to
+     * the supplied baseOffset.
+     *
+     * @param topicPartition topic-partition to delete from
+     * @param baseOffset inclusive upper bound for base offsets to delete
+     * @return the set of base offsets that were actually deleted
+     */
     public abstract Set<Long> deleteSegmentsBeforeBaseOffsetInclusive(TopicPartition topicPartition, long baseOffset);
 
     /**
@@ -185,6 +241,9 @@ public abstract class SegmentManager {
         return config.getSegmentManagerGcIntervalSeconds() > 0;
     }
 
+    /**
+     * Start background services such as periodic garbage collection if enabled by configuration.
+     */
     public void start() {
         if (isGcEnabled()) {
             garbageCollectionExecutor.scheduleAtFixedRate(
@@ -197,11 +256,26 @@ public abstract class SegmentManager {
         LOG.info(String.format("Started SegmentManager with GC interval: %d seconds", config.getSegmentManagerGcIntervalSeconds()));
     }
 
+    /**
+     * Stop background services and release resources held by this manager.
+     */
     public void stop() {
         garbageCollectionExecutor.shutdown();
         LOG.info("Stopped SegmentManager");
     }
 
+    /**
+     * Create a {@link SegmentManager} implementation via reflection using the class name specified in
+     * configuration.
+     *
+     * @param config uploader configuration
+     * @param environmentProvider provider for cluster and broker identity
+     * @param endpointProvider provider for storage service endpoints
+     * @param leadershipWatcher watcher that reports the set of leading partitions
+     * @return a concrete {@link SegmentManager} implementation
+     * @throws IllegalArgumentException if the configuration property is missing
+     * @throws RuntimeException if instantiation fails
+     */
     public static SegmentManager createSegmentManager(SegmentUploaderConfiguration config, KafkaEnvironmentProvider environmentProvider, StorageServiceEndpointProvider endpointProvider, LeadershipWatcher leadershipWatcher) {
         String className = config.getProperty(SEGMENT_MANAGER_CLASS_CONFIG_KEY);
         if (className == null) {

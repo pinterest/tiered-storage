@@ -3,7 +3,6 @@ package com.pinterest.kafka.tieredstorage.uploader.dlq;
 import com.pinterest.kafka.tieredstorage.common.SegmentUtils;
 import com.pinterest.kafka.tieredstorage.uploader.DirectoryTreeWatcher;
 import com.pinterest.kafka.tieredstorage.uploader.SegmentUploaderConfiguration;
-import com.pinterest.kafka.tieredstorage.uploader.TestBase;
 import com.pinterest.kafka.tieredstorage.uploader.TestS3ContainerBase;
 import org.apache.kafka.common.TopicPartition;
 import org.junit.jupiter.api.Test;

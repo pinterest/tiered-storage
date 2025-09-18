@@ -43,10 +43,25 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
 
+/**
+ * {@link SegmentManager} implementation that uses S3 as the underlying storage system.
+ */
 public class S3SegmentManager extends SegmentManager {
     private final static Logger LOG = LogManager.getLogger(S3SegmentManager.class.getName());
     private static S3Client s3Client;
 
+    /**
+     * Create a new S3-backed SegmentManager.
+     *
+     * <p>Initializes the underlying {@link S3Client} with an API call timeout derived from the
+     * uploader configuration. Also triggers superclass initialization which may schedule
+     * background garbage collection.</p>
+     *
+     * @param config uploader configuration
+     * @param environmentProvider provider for cluster and broker identity
+     * @param endpointProvider provider for storage service endpoints
+     * @param leadershipWatcher watcher that reports the set of leading partitions
+     */
     public S3SegmentManager(SegmentUploaderConfiguration config, KafkaEnvironmentProvider environmentProvider, StorageServiceEndpointProvider endpointProvider, LeadershipWatcher leadershipWatcher) {
         super(config, environmentProvider, endpointProvider, leadershipWatcher);
         ClientOverrideConfiguration overrideConfiguration = ClientOverrideConfiguration.builder()
@@ -57,11 +72,24 @@ public class S3SegmentManager extends SegmentManager {
         }
     }
 
+    /**
+     * Perform S3-specific initialization logic. Currently logs an initialization message.
+     */
     @Override
     public void initialize() {
         LOG.info("Initializing S3SegmentManager");
     }
 
+    /**
+     * Load {@link TopicPartitionMetadata} for the provided topic-partition from S3.
+     *
+     * <p>Reads the metadata file from the configured S3 prefix. If found, the eTag from the
+     * response is stored in the metadata as a load hash to enable conditional updates.</p>
+     *
+     * @param topicPartition topic-partition whose metadata should be loaded
+     * @return the loaded metadata, or null if the metadata file does not exist
+     * @throws IOException if an I/O error occurs while reading the object
+     */
     @Override
     public synchronized TopicPartitionMetadata getTopicPartitionMetadataFromStorage(TopicPartition topicPartition) throws IOException {
         S3StorageServiceEndpoint endpoint = getS3StorageServiceEndpoint(topicPartition);
@@ -87,6 +115,12 @@ public class S3SegmentManager extends SegmentManager {
         }
     }
 
+    /**
+     * Write {@link TopicPartitionMetadata} to S3, using the stored eTag for optimistic concurrency when available.
+     *
+     * @param tpMetadata metadata to write
+     * @return true if the metadata was successfully written, false otherwise
+     */
     @Override
     public synchronized boolean writeMetadataToStorage(TopicPartitionMetadata tpMetadata) {
         S3StorageServiceEndpoint endpoint = getS3StorageServiceEndpoint(tpMetadata.getTopicPartition());
@@ -117,6 +151,17 @@ public class S3SegmentManager extends SegmentManager {
         }
     }
 
+    /**
+     * Delete all segment files in S3 with base offsets less than or equal to the provided offset.
+     *
+     * <p>Segments are discovered via a list operation and deleted in ascending order. Deletion
+     * stops early if a full set of expected files (log, index, timeindex) is not removed to
+     * avoid gaps.</p>
+     *
+     * @param topicPartition topic-partition whose segments should be deleted
+     * @param baseOffset inclusive upper bound for base offsets to delete
+     * @return the set of base offsets actually deleted
+     */
     @Override
     public synchronized Set<Long> deleteSegmentsBeforeBaseOffsetInclusive(TopicPartition topicPartition, long baseOffset) {
         // list all objects in topic-partition prefix which is less than or equal to baseOffset
@@ -173,6 +218,13 @@ public class S3SegmentManager extends SegmentManager {
 
     }
 
+    /**
+     * Build the {@link S3StorageServiceEndpoint} for a specific topic-partition using the configured
+     * prefix entropy and endpoint builder provided by discovery.
+     *
+     * @param topicPartition topic-partition for which to build the endpoint
+     * @return the constructed S3 storage service endpoint
+     */
     private S3StorageServiceEndpoint getS3StorageServiceEndpoint(TopicPartition topicPartition) {
         S3StorageServiceEndpoint.Builder endpointBuilder =
         (S3StorageServiceEndpoint.Builder) endpointProvider.getStorageServiceEndpointBuilderForTopic(topicPartition.topic());
@@ -183,6 +235,11 @@ public class S3SegmentManager extends SegmentManager {
         return endpoint;
     }
 
+    /**
+     * Inject a custom {@link S3Client} for testing.
+     *
+     * @param suppliedS3Client the client to use for subsequent operations
+     */
     @VisibleForTesting
     public static void setS3Client(S3Client suppliedS3Client) {
         s3Client = suppliedS3Client;
