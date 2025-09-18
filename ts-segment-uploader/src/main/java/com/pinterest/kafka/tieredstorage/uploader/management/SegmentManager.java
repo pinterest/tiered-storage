@@ -246,14 +246,18 @@ public abstract class SegmentManager {
      */
     public void start() {
         if (isGcEnabled()) {
+            // jitter to prevent metadata contention upon startup and concurrent request rate spikes. This delay will be between 5 and 10 minutes.
+            int initialDelay = 60 * 5 + (int) (Math.random() * 60 * 5);
             garbageCollectionExecutor.scheduleAtFixedRate(
                     this::runGarbageCollection,
-                    config.getSegmentManagerGcIntervalSeconds() / 2,    // initial delay to prevent metadata contention with potentially large volumes of uploads upon startup
+                    initialDelay,
                     config.getSegmentManagerGcIntervalSeconds(),
                     TimeUnit.SECONDS
             );
+            LOG.info(String.format("Started SegmentManager with GC interval: %d seconds, delay: %d seconds", config.getSegmentManagerGcIntervalSeconds(), initialDelay));
+        } else {
+            LOG.info("Garbage collection is disabled. Will not start garbage collection executor.");
         }
-        LOG.info(String.format("Started SegmentManager with GC interval: %d seconds", config.getSegmentManagerGcIntervalSeconds()));
     }
 
     /**
