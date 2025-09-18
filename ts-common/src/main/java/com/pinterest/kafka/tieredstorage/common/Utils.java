@@ -83,6 +83,11 @@ public class Utils {
         }
     }
 
+    /**
+     * Get the base offset from a filename.
+     * @param filename
+     * @return the base offset from the filename
+     */
     public static Optional<Long> getBaseOffsetFromFilename(String filename) {
         // match 20 digits at the end of the filename
         Pattern pattern = Pattern.compile("^(.*/)?(\\d{20})\\.(log|index|timeindex)$");
