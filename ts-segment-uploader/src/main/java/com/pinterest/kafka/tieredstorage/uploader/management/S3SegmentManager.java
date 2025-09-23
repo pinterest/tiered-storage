@@ -24,14 +24,14 @@ import software.amazon.awssdk.services.s3.model.DeleteObjectsRequest;
 import software.amazon.awssdk.services.s3.model.DeleteObjectsResponse;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
-import software.amazon.awssdk.services.s3.model.ListObjectsRequest;
-import software.amazon.awssdk.services.s3.model.ListObjectsResponse;
+import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
 import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 import software.amazon.awssdk.services.s3.model.ObjectIdentifier;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectResponse;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 import software.amazon.awssdk.services.s3.model.S3Object;
+import software.amazon.awssdk.services.s3.paginators.ListObjectsV2Iterable;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -169,14 +169,17 @@ public class S3SegmentManager extends SegmentManager {
         S3StorageServiceEndpoint endpoint = getS3StorageServiceEndpoint(topicPartition);
         String bucket = endpoint.getBucket();
         String key = endpoint.getFullPrefix();
-        ListObjectsRequest request = ListObjectsRequest.builder().bucket(bucket).prefix(key + "/").build(); // add trailing slash to ensure we don't accidentally delete objects in other partitions with the same prefix
-        ListObjectsResponse response = s3Client.listObjects(request);
+        ListObjectsV2Request request = ListObjectsV2Request.builder().bucket(bucket).prefix(key + "/").build();
+        ListObjectsV2Iterable response = s3Client.listObjectsV2Paginator(request);
         for (S3Object object : response.contents()) {
             SegmentUtils.SegmentFileType fileType = Utils.getSegmentFileTypeFromName(object.key());
             if (fileType != null) {
                 Optional<Long> offset = Utils.getBaseOffsetFromFilename(object.key());
                 if (offset.isPresent() && offset.get() <= baseOffset) {
                     toDeleteSegments.add(offset.get());
+                } else if (offset.isPresent() && offset.get() > baseOffset) {
+                    // stop when we reach segments with offsets greater than baseOffset
+                    break;
                 }
             }
         }

@@ -17,6 +17,7 @@ public class WatermarkFileHandler {
     public final static Path BASE_TS_DIRECTORY = new File("/tmp/tieredstorage/").toPath();
     public final static Path WATERMARK_DIRECTORY = BASE_TS_DIRECTORY.resolve("watermarks/");
     public final static String WATERMARK_FILE_NAME = "offset.wm";
+    public final static String WATERMARK_FILE_EXTENSION = ".wm";
 
     static {
         Utils.createOrClearFolder(WATERMARK_DIRECTORY.toFile());
@@ -32,7 +33,7 @@ public class WatermarkFileHandler {
                     // check again if directory.exists() in case of contending threads creating it
                     throw new IOException("Could not create directory " + directory);
             }
-            filePath = directoryPath.resolve(content + ".wm");
+            filePath = directoryPath.resolve(content + WATERMARK_FILE_EXTENSION);
 
             Files.deleteIfExists(filePath);
             File tempFile = Files.createFile(filePath).toFile();

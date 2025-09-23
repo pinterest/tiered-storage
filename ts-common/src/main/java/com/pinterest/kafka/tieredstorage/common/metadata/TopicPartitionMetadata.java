@@ -24,6 +24,28 @@ import java.util.concurrent.ConcurrentHashMap;
  * where values implement {@link MetadataJsonSerializable}. This object is serialized to and
  * from JSON for persistence. Callers may also use {@link #getLoadHash()} to store a version
  * or entity tag loaded from the storage system to support optimistic concurrency.</p>
+ * 
+ * Example TopicPartitionMetadata JSON structure:
+ * {
+ *   "topicPartition": {
+ *     "topic": "test-topic",
+ *     "partition": 0
+ *   },
+ *   "metadata": {
+ *     "timeindex": {
+ *       "entries": [
+ *         {
+ *           "timestamp": 1727164800000,
+ *           "relativeOffset": 0,
+ *           "baseOffset": 100
+ *         }
+ *       ],
+ *       "timeIndexType": "TOPIC_PARTITION",
+ *       "size": 1
+ *     }
+ *   },
+ *   "loadHash": "1234567890"
+ * }
  */
 public class TopicPartitionMetadata implements MetadataJsonSerializable {
     private final static Logger LOG = LogManager.getLogger(TopicPartitionMetadata.class.getName());

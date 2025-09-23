@@ -57,7 +57,7 @@ public class MultiThreadedS3FileUploader implements S3FileUploader {
                 .build();
         String s3Bucket = endpoint.getBucket();
         String s3Prefix = endpoint.getPrefixExcludingTopicPartition();
-        String subpath = uploadTask.getFullFilename().endsWith(".wm") ?
+        String subpath = uploadTask.getFullFilename().endsWith(WatermarkFileHandler.WATERMARK_FILE_EXTENSION) ?
                 uploadTask.getSubPath().replace("/" + uploadTask.getOffset(), "/offset") :
                 uploadTask.getSubPath();
 

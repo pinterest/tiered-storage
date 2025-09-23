@@ -28,6 +28,52 @@ import java.util.concurrent.ConcurrentSkipListSet;
  * 
  * When TimeIndexType is TOPIC_PARTITION, the entries are ordered by timestamp and base offset.
  * When TimeIndexType is SEGMENT, the entries are ordered by relative offset since the base offset is the same for all entries in a segment.
+ * 
+ * Example TimeIndex JSON structure (TOPIC_PARTITION type):
+ * {
+ *   "entries": [
+ *     {
+ *       "timestamp": 1727164800000,
+ *       "relativeOffset": 0,
+ *       "baseOffset": 100
+ *     },
+ *     {
+ *       "timestamp": 1727164805000,
+ *       "relativeOffset": 0,
+ *       "baseOffset": 200
+ *     },
+ *     {
+ *       "timestamp": 1727164810000,
+ *       "relativeOffset": 0,
+ *       "baseOffset": 300
+ *     }
+ *   ],
+ *   "timeIndexType": "TOPIC_PARTITION",
+ *   "size": 3
+ * }
+ * 
+ * Example TimeIndex JSON structure (SEGMENT type):
+ * {
+ *   "entries": [
+ *     {
+ *       "timestamp": 1727164800000,
+ *       "relativeOffset": 30,
+ *       "baseOffset": 100
+ *     },
+ *     {
+ *       "timestamp": 1727164815000,
+ *       "relativeOffset": 60,
+ *       "baseOffset": 100
+ *     },
+ *     {
+ *       "timestamp": 1727164820000,
+ *       "relativeOffset": 90,
+ *       "baseOffset": 100
+ *     }
+ *   ],
+ *   "timeIndexType": "SEGMENT",
+ *   "size": 3
+ * }
  */
 
 public class TimeIndex implements MetadataJsonSerializable {

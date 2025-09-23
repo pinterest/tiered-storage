@@ -27,6 +27,25 @@ import java.util.concurrent.TimeUnit;
 /**
  * Abstract class to manage the remote segments and metadata. The concrete implementation is determined by the
  * {@link #SEGMENT_MANAGER_CLASS_CONFIG_KEY} configuration.
+ * 
+ * The core safety principle behind the SegmentManager and metadata management is that sparse metadata (i.e. missing entries) is ok,
+ * but dangling references (entries pointing to non-existent segments) is not. We will avoid creating dangling references by ensuring that the metadata is updated 
+ * before performing actual deletions. If metadata update fails, we will skip the garbage collection for that topic partition and let the next GC cycle take care of it.
+ * 
+ * Concurrency control:
+ * ----------------------------
+ * There are two levels of concurrency control implemented to ensure that the metadata does not contain dangling references. This is due to the fact that metadata updates require
+ * a read-modify-write operation in both the GC thread and the main uploader thread in {@link DirectoryTreeWatcher} (contention within a signle uploader instance), and between
+ * multiple uploader instances during simultaneous garbage collection in one broker/uploader and segment upload in another uploader instance. This could happen if there is a leadership
+ * change and the new leader starts segment upload while the old leader is still performing garbage collection.
+ * 
+ * The first level of concurrency control is a topic-partition level lock acquired via
+ * {@link TopicPartitionMetadataUtil#tryAcquireLock(TopicPartition, long)}. This prevents contention within a single uploader instance between the GC thread and the main uploader thread.
+ * 
+ * The second level of concurrency control is enforced via optimistic concurrency control by checking the {@link TopicPartitionMetadata#getLoadHash()} which was set during
+ * read / load in the {@link #getTopicPartitionMetadataFromStorage(TopicPartition)} method. It should only overwrite the metadata if the existing metadata has the same load hash prior
+ * to this write. The specific implementation of this is left to the concrete implementation of {@link SegmentManager}.
+ * 
  */
 public abstract class SegmentManager {
     private static final Logger LOG = LogManager.getLogger(SegmentManager.class.getName());
@@ -86,7 +105,8 @@ public abstract class SegmentManager {
 
             LOG.info(String.format("Executing garbage collection for topicPartition=%s with retention=%ss and cutoffTimestamp=%s", leadingPartition, retentionSeconds, cutoffTimestamp));
 
-            // get cutoff offset from metadata based on timestamp
+            // Acquire lock (best-effort) to avoid race conditions when updating metadata. If lock acquisition fails, we will skip the metadata update and garbage collection altogether
+            // to prevent blocking the garbage collection. It is ok since the next GC cycle will take care of the missed GC cycle for this topic partition.
             boolean lockAcquired = TopicPartitionMetadataUtil.tryAcquireLock(leadingPartition, 5000L);
             if (!lockAcquired) {
                 LOG.warn("Failed to acquire lock for TopicPartitionMetadata for " + leadingPartition + ", skipping since it is best-effort");
@@ -100,6 +120,7 @@ public abstract class SegmentManager {
                 );
                 continue;
             }
+            // get cutoff offset from metadata based on timestamp
             long cutoffOffset = -1L;
             try {
                 TopicPartitionMetadata tpMetadata;

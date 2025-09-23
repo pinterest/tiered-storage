@@ -244,7 +244,7 @@ public class DirectoryTreeWatcher implements Runnable {
                         .substring(0, uploadTask.getFullFilename().lastIndexOf(SegmentUtils.getFileTypeSuffix(SegmentUtils.SegmentFileType.LOG)));
                 dequeueSegment(topicPartition, filename);
                 uploadWatermarkFile(uploadTask, topicPartition, filename);
-            } else if (uploadTask.getSubPath().endsWith(".wm")) {
+            } else if (uploadTask.getSubPath().endsWith(WatermarkFileHandler.WATERMARK_FILE_EXTENSION)) {
                 long startTs = System.currentTimeMillis();
                 boolean metadataUpdateSuccess = updateMetadata(uploadTask);
                 if (metadataUpdateSuccess) {
@@ -320,6 +320,8 @@ public class DirectoryTreeWatcher implements Runnable {
             LOG.warn("Skipping metadata update due to null SegmentManager");
             return false;
         }
+        // Acquire lock (best-effort) to avoid race conditions when updating metadata. If lock acquisition fails, we will skip the metadata update
+        // to prevent blocking the uploader. It is ok for metadata to be sparse.
         boolean lockAcquired = TopicPartitionMetadataUtil.tryAcquireLock(uploadTask.getTopicPartition(), 5000L);
         if (!lockAcquired) {
             LOG.info("Failed to acquire lock for TopicPartitionMetadata for " + uploadTask.getTopicPartition() + ", skipping since it is best-effort");
@@ -411,7 +413,7 @@ public class DirectoryTreeWatcher implements Runnable {
         // Avoid retrying offset.wm failed uploads to prevent retries from overwriting more recent watermark uploads.
         // We will also skip sending failed offset.wm uploads to the DeadLetterQueue since they do not need any such handling.
         // Disabling retries is safe because the next successful watermark upload will update the committed offset.
-        if (uploadTask.getFullFilename().endsWith(".wm")) {
+        if (uploadTask.getFullFilename().endsWith(WatermarkFileHandler.WATERMARK_FILE_EXTENSION)) {
             LOG.warn(String.format("Watermark file upload failed: %s --> %s. Skipping retries and DLQ as configured. Error: %s", 
                     uploadTask.getAbsolutePath(), uploadTask.getUploadDestinationPathString(), throwable.getMessage()));
             // Send a specific metric for watermark file failures
@@ -681,7 +683,6 @@ public class DirectoryTreeWatcher implements Runnable {
         } else if (kind.equals(StandardWatchEventKinds.ENTRY_DELETE)) {
             if (isFile) {
                 // this indicates a log segment deletion (likely due to topic retention).
-                // TODO: this log segment can only be deleted after the uploader has uploaded it.
                 // the case of file deletion event due to deletion of topic is captured in
                 // directory deletion event.
                 // for now, if the filename is still in the segment queue we alert
