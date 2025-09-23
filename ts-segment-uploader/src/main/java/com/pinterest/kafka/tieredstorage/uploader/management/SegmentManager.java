@@ -35,7 +35,7 @@ import java.util.concurrent.TimeUnit;
  * Concurrency control:
  * ----------------------------
  * There are two levels of concurrency control implemented to ensure that the metadata does not contain dangling references. This is due to the fact that metadata updates require
- * a read-modify-write operation in both the GC thread and the main uploader thread in {@link DirectoryTreeWatcher} (contention within a signle uploader instance), and between
+ * a read-modify-write operation in both the GC thread and the main uploader thread (contention within a signle uploader instance), and between
  * multiple uploader instances during simultaneous garbage collection in one broker/uploader and segment upload in another uploader instance. This could happen if there is a leadership
  * change and the new leader starts segment upload while the old leader is still performing garbage collection.
  * 
