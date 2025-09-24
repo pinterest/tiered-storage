@@ -79,29 +79,4 @@ class S3OffsetIndexHandlerTest {
         assertEquals(29274, S3OffsetIndexHandler.getMinimumPositionForOffset(indexFileBuffer, baseOffset, baseOffset + 1126305));
         assertEquals(29274, S3OffsetIndexHandler.getMinimumPositionForOffset(indexFileBuffer, baseOffset, baseOffset + 11126305));
     }
-
-    @Test
-    @Disabled
-    void testGetOffsetForTime() throws IOException {
-        File file = new File(S3OffsetIndexHandlerTest.class.getClassLoader().getResource("log-files/timeindex_test/00000000000000022964.timeindex").getFile());
-        try (FileInputStream fis = new FileInputStream(file);
-             FileChannel channel = fis.getChannel()) {
-
-            final int ENTRY_SIZE = 12; // 8 bytes for timestamp, 4 for offset
-            ByteBuffer buffer = ByteBuffer.allocate(ENTRY_SIZE);
-
-            int entryNum = 0;
-            while (channel.read(buffer) == ENTRY_SIZE) {
-                buffer.flip();
-
-                long timestamp = buffer.getLong();
-                int offset = buffer.getInt();
-
-                System.out.printf("Entry %d: timestamp=%d (%s), relativeOffset=%d\n",
-                        entryNum++, timestamp, Instant.ofEpochMilli(timestamp), offset);
-
-                buffer.clear();
-            }
-        }
-    }
 }
