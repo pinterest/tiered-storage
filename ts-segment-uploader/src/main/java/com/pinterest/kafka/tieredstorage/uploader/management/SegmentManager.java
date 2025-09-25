@@ -177,7 +177,6 @@ import java.util.concurrent.TimeUnit;
  * </pre>
  * 
  * In the example above, the metadata will be missing entry for segment=600 and it will never be filled in.<br>
- * </p>
  * <br>
  * Dealing with metadata sparsity:<br>
  * ----------------------------<br>
