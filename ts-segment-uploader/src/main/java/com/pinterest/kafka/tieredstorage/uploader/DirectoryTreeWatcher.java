@@ -321,7 +321,7 @@ public class DirectoryTreeWatcher implements Runnable {
             return false;
         }
         // Acquire lock (best-effort) to avoid race conditions when updating metadata. If lock acquisition fails, we will skip the metadata update
-        // to prevent blocking the uploader. It is ok for metadata to be sparse.
+        // to prevent blocking the uploader. It is ok for metadata to be sparse (see SegmentManager for more details)
         boolean lockAcquired = TopicPartitionMetadataUtil.tryAcquireLock(uploadTask.getTopicPartition(), 5000L);
         if (!lockAcquired) {
             LOG.info("Failed to acquire lock for TopicPartitionMetadata for " + uploadTask.getTopicPartition() + ", skipping since it is best-effort");

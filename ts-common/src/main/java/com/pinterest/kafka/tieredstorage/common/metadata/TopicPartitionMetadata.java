@@ -46,6 +46,12 @@ import java.util.concurrent.ConcurrentHashMap;
  *   },
  *   "loadHash": "1234567890"
  * }
+ * 
+ * Metadata Sparsity:
+ * ----------------------------
+ * The core safety principle behind the management and synchronization of metadata is that sparse metadata (i.e. missing entries) is ok,
+ * but dangling references (entries pointing to non-existent segments) is not. For details around how this is implemented and its implications, 
+ * please refer to SegmentManager.java.
  */
 public class TopicPartitionMetadata implements MetadataJsonSerializable {
     private final static Logger LOG = LogManager.getLogger(TopicPartitionMetadata.class.getName());

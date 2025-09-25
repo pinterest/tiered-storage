@@ -6,6 +6,7 @@ import com.pinterest.kafka.tieredstorage.common.metadata.TimeIndex;
 import com.pinterest.kafka.tieredstorage.common.metadata.TopicPartitionMetadata;
 import com.pinterest.kafka.tieredstorage.common.metadata.TopicPartitionMetadataUtil;
 import com.pinterest.kafka.tieredstorage.common.metrics.MetricRegistryManager;
+import com.pinterest.kafka.tieredstorage.uploader.DirectoryTreeWatcher;
 import com.pinterest.kafka.tieredstorage.uploader.KafkaEnvironmentProvider;
 import com.pinterest.kafka.tieredstorage.uploader.SegmentUploaderConfiguration;
 import com.pinterest.kafka.tieredstorage.uploader.UploaderMetrics;
@@ -25,26 +26,166 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Abstract class to manage the remote segments and metadata. The concrete implementation is determined by the
- * {@link #SEGMENT_MANAGER_CLASS_CONFIG_KEY} configuration.
+ * <p>
+ *     Abstract class to manage the remote segments and metadata. The concrete implementation is determined by the
+ *     {@link #SEGMENT_MANAGER_CLASS_CONFIG_KEY} configuration.
+ * </p>
  * 
- * The core safety principle behind the SegmentManager and metadata management is that sparse metadata (i.e. missing entries) is ok,
- * but dangling references (entries pointing to non-existent segments) is not. We will avoid creating dangling references by ensuring that the metadata is updated 
- * before performing actual deletions. If metadata update fails, we will skip the garbage collection for that topic partition and let the next GC cycle take care of it.
- * 
- * Concurrency control:
- * ----------------------------
+ * <p>
+ *     The core safety principle behind the SegmentManager and metadata management is that sparse metadata (i.e. missing entries) is ok,
+ *     but dangling references (entries pointing to non-existent segments) is not. We will avoid creating dangling references by ensuring that the metadata is updated
+ *     before performing actual deletions. If metadata update fails, we will skip the garbage collection for that topic partition and let the next GC cycle take care of it.
+ * </p>
+ *
+ * <p>
+ * Concurrency control (avoiding dangling references):<br>
+ * ----------------------------<br>
  * There are two levels of concurrency control implemented to ensure that the metadata does not contain dangling references. This is due to the fact that metadata updates require
  * a read-modify-write operation in both the GC thread and the main uploader thread (contention within a signle uploader instance), and between
  * multiple uploader instances during simultaneous garbage collection in one broker/uploader and segment upload in another uploader instance. This could happen if there is a leadership
- * change and the new leader starts segment upload while the old leader is still performing garbage collection.
- * 
+ * change and the new leader starts segment upload while the old leader is still performing garbage collection.<br>
+ * <br>
  * The first level of concurrency control is a topic-partition level lock acquired via
- * {@link TopicPartitionMetadataUtil#tryAcquireLock(TopicPartition, long)}. This prevents contention within a single uploader instance between the GC thread and the main uploader thread.
- * 
+ * {@link TopicPartitionMetadataUtil#tryAcquireLock(TopicPartition, long)}. This prevents contention within a single uploader instance between the GC thread and the main uploader thread.<br>
+ * <br>
  * The second level of concurrency control is enforced via optimistic concurrency control by checking the {@link TopicPartitionMetadata#getLoadHash()} which was set during
  * read / load in the {@link #getTopicPartitionMetadataFromStorage(TopicPartition)} method. It should only overwrite the metadata if the existing metadata has the same load hash prior
  * to this write. The specific implementation of this is left to the concrete implementation of {@link SegmentManager}.
+ * </p>
+ *
+ * <p>
+ * Metadata Sparsity:<br>
+ * ----------------------------<br>
+ * There are 3 main scenarios which could result in sparse metadata (i.e. missing entries / gaps / holes), which is non-problematic by design. These scenarios are:<br>
+ * <br>
+ * 1. Metadata write failure during upload:<br>
+ * During upload in {@link DirectoryTreeWatcher}, metadata is updated after the upload of the segment files are complete. If the metadata update fails,
+ * the segment files will remain in remote storage but the metadata will miss the entry for that particular segment. This missing entry will never be filled in.<br>
+ * 
+ * Example:
+ * <pre>
+ * {@code
+ * Segment files: [0, 100, 200, 300, 400, 500]
+ * Metadata:      [0, 100, 200, 300, 400, 500]
+ * 
+ * 1. Upload segment=600 (success)
+ * 2. Append segment=600 to metadata and upload (failure)
+ * 
+ * Segment files: [0, 100, 200, 300, 400, 500, 600]
+ * Metadata:      [0, 100, 200, 300, 400, 500]
+ * 
+ * 3. Upload segment=700 (success)
+ * 4. Append segment=700 to metadata and upload (success)
+ * 
+ * Segment files: [0, 100, 200, 300, 400, 500, 600, 700]
+ * Metadata:      [0, 100, 200, 300, 400, 500, 700]
+ * 
+ * }
+ * </pre>
+ * In the example above, the metadata will be sparse with the entry for segment=600 missing.<br>
+ * <br>
+ * 2. During garbage collection in {@link SegmentManager}, metadata is updated before the actual deletion of segment files. If the metadata update succeeds,
+ * but the subsequent deletion of segment files fails, the metadata's earliest offset will be greater than the actual earliest offset of segment files remaining in remote storage.<br>
+ * <br>
+ * Example:
+ * <pre>
+ *     {@code
+ *          GC Cycle 1:
+ *          ----------------------------
+ *          Segment files: [0, 100, 200, 300, 400, 500]
+ *          Metadata:      [0, 100, 200, 300, 400, 500]
+ * 
+ *          1. Remove from metadata segments=[0, 100] (success)
+ *          2. Delete segments=[0, 100] (failure)
+ * 
+ *          Segment files: [0, 100, 200, 300, 400, 500]
+ *          Metadata:      [200, 300, 400, 500]
+ * 
+ *          Metadata missing entries for segments=[0, 100]
+ * 
+ *          GC Cycle 2:
+ *          ----------------------------
+ *          Segment files: [0, 100, 200, 300, 400, 500, 600, 700]
+ *          Metadata:      [200, 300, 400, 500, 600, 700]
+ * 
+ *          1. Remove from metadata segments=[200, 300] (success)
+ *          2. Delete segments=[0, 100, 200, 300] (success)
+ * 
+ *          Segment files: [400, 500, 600, 700]
+ *          Metadata:      [400, 500, 600, 700]
+ * 
+ *          Metadata and segments are in sync again
+ *     }
+ * </pre>
+ * 
+ * In the example above, the metadata will be missing entries for segments=[0, 100] between the two GC cycles.<br>
+ * <br>
+ * 3. Leadership change during garbage collection:<br>
+ * If the leadership changes during garbage collection, the new leader might start uploading new segments while the old leader is still performing garbage collection.
+ * This is due to the fact that {@link LeadershipWatcher} is polling for leadership changes every X seconds, and the old leader might have already started garbage collection
+ * while the new leader detects the leadership change and starts uploading new segments.<br>
+ * <br>
+ * Example:
+ * <pre>
+ *     {@code
+ *          T0:
+ *          ----------------------------
+ *          Broker A is the leader for topic-0
+ *          Broker B is the follower for topic-0
+ * 
+ *          Segment files: [0, 100, 200, 300, 400, 500]
+ *          Metadata:      [0, 100, 200, 300, 400, 500]
+ * 
+ *          Broker A starts garbage collection for topic-0, reads metadata as [0, 100, 200, 300, 400, 500] and detects [0, 100] as expired 
+ *          Broker B detects leadership change and starts uploading new segment=600 for topic-0
+ * 
+ *          No changes yet to metadata or segment files:
+ *          Segment files: [0, 100, 200, 300, 400, 500]
+ *          Metadata:      [0, 100, 200, 300, 400, 500]
+ * 
+ *          T1:
+ *          ----------------------------
+ *          Broker A is the follower for topic-0
+ *          Broker B is the leader for topic-0
+ * 
+ *          Segment files: [0, 100, 200, 300, 400, 500, 600]
+ *          Metadata:      [0, 100, 200, 300, 400, 500]
+ * 
+ *          Broker B finishes uploading new segment=600 for topic-0, prepares metadata update. It reads current metadata as [0, 100, 200, 300, 400, 500]
+ *          Broker A finishes garbage collection for topic-0, removes [0, 100] from metadata and deletes [0, 100] from segment files
+ * 
+ *          Segment files: [200, 300, 400, 500, 600]
+ *          Metadata:      [200, 300, 400, 500]
+ * 
+ *          T2:
+ *          ----------------------------
+ *          Broker A is the follower for topic-0
+ *          Broker B is the leader for topic-0
+ * 
+ *          Segment files: [200, 300, 400, 500, 600]
+ *          Metadata:      [200, 300, 400, 500]
+ * 
+ *          Broker B appends segment=600 to metadata. Because it initially read the metadata as [0, 100, 200, 300, 400, 500], 
+ *          it will try to overwrite the metadata with [0, 100, 200, 300, 400, 500, 600],
+ *          but it will fail since the current metadata has a different load hash after Broker A updated the metadata in its GC cycle
+ * 
+ *          Segment files: [200, 300, 400, 500, 600]
+ *          Metadata:      [200, 300, 400, 500]
+ * 
+ *          Metadata missing entry for segment=600
+ *     }
+ * </pre>
+ * 
+ * In the example above, the metadata will be missing entry for segment=600 and it will never be filled in.<br>
+ * </p>
+ * <br>
+ * Dealing with metadata sparsity:<br>
+ * ----------------------------<br>
+ * Scenarios 1 and 3 result in permanent sparsity in the metadata, while scenario 2 results in a temporary sparsity in the metadata.
+ * In all cases, the metadata will never point to dangling / non-existent segments. Metadata sparsity is non-problematic by design
+ * because users of the metadata should handle the sparsity gracefully. For example, a consumer using the metadata for offset or 
+ * timestamp seeking should use the metadata to reduce the search space, and then perform a linear search to find the desired record 
+ * for the given offset or timestamp. This design is similar to how Kafka's index and timeindex files are sparse by design.
  * 
  */
 public abstract class SegmentManager {
