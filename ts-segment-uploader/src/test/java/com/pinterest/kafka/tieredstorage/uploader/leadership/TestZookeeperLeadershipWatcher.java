@@ -3,8 +3,6 @@ package com.pinterest.kafka.tieredstorage.uploader.leadership;
 import com.pinterest.kafka.tieredstorage.common.discovery.s3.MockS3StorageServiceEndpointProvider;
 import com.pinterest.kafka.tieredstorage.uploader.DirectoryTreeWatcher;
 import com.pinterest.kafka.tieredstorage.uploader.KafkaEnvironmentProvider;
-import com.pinterest.kafka.tieredstorage.uploader.MultiThreadedS3FileUploader;
-import com.pinterest.kafka.tieredstorage.uploader.S3FileUploader;
 import com.pinterest.kafka.tieredstorage.uploader.SegmentUploaderConfiguration;
 import com.pinterest.kafka.tieredstorage.uploader.TestBase;
 import com.salesforce.kafka.test.junit5.SharedKafkaTestResource;
@@ -14,14 +12,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
-import java.io.IOException;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ExecutionException;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
@@ -39,17 +34,11 @@ public class TestZookeeperLeadershipWatcher extends TestBase {
     private LeadershipWatcher zkLeadershipWatcher;
 
     @BeforeEach
-    @Override
     public void setup() throws Exception {
-        super.setup();
 
         // environment provider setup
         KafkaEnvironmentProvider environmentProvider = createTestEnvironmentProvider(sharedKafkaTestResource);
         environmentProvider.load();
-
-        // override s3 client
-        overrideS3ClientForFileDownloader(s3Client);
-        overrideS3AsyncClientForFileUploader(s3AsyncClient);
 
         // endpoint provider setup
         MockS3StorageServiceEndpointProvider endpointProvider = new MockS3StorageServiceEndpointProvider();
@@ -57,21 +46,18 @@ public class TestZookeeperLeadershipWatcher extends TestBase {
 
         // s3 uploader setup
         SegmentUploaderConfiguration config = getSegmentUploaderConfiguration(TEST_CLUSTER);
-        S3FileUploader s3FileUploader = new MultiThreadedS3FileUploader(endpointProvider, config, environmentProvider);
 
         // start directory tree watcher
-        mockDirectoryTreeWatcher = new TestLeadershipWatcher.MockDirectoryTreeWatcher(watchedTopicPartitions, s3FileUploader, config, environmentProvider);
+        mockDirectoryTreeWatcher = new TestLeadershipWatcher.MockDirectoryTreeWatcher(watchedTopicPartitions, config, environmentProvider);
         zkLeadershipWatcher = new ZookeeperLeadershipWatcher(mockDirectoryTreeWatcher, config, environmentProvider);
         DirectoryTreeWatcher.setLeadershipWatcher(zkLeadershipWatcher);
         zkLeadershipWatcher.initialize();
     }
 
     @AfterEach
-    @Override
-    public void tearDown() throws IOException, ExecutionException, InterruptedException {
+    public void tearDown() throws InterruptedException {
         deleteTopicAndVerify(sharedKafkaTestResource, TEST_TOPIC_A);
         mockDirectoryTreeWatcher.stop();
-        super.tearDown();
     }
 
     /**

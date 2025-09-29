@@ -1,6 +1,7 @@
 package com.pinterest.kafka.tieredstorage.consumer;
 
 import com.adobe.testing.s3mock.junit5.S3MockExtension;
+import com.pinterest.kafka.tieredstorage.common.SegmentUtils;
 import com.pinterest.kafka.tieredstorage.common.Utils;
 import org.apache.kafka.common.record.S3Records;
 import org.apache.log4j.LogManager;
@@ -55,9 +56,6 @@ public class TestS3Base extends TestBase {
             S3MockExtension.builder().silent().withSecureConnection(false).build();
     protected S3Client s3Client;
     protected S3AsyncClient s3AsyncClient;
-    protected enum FileType {
-        LOG, INDEX, TIMEINDEX
-    }
     private static MockedStatic<S3Records> s3RecordsMockedStatic;
 
     @BeforeEach
@@ -115,34 +113,34 @@ public class TestS3Base extends TestBase {
 
     protected void putEmptyObjects(String cluster, String topic, int partition, long minOffset, long maxOffset, long numOffsetsPerFile) {
         for (long i = minOffset; i <= maxOffset; i += numOffsetsPerFile) {
-            LOG.info(String.format("Put empty object to bucket=%s, key=%s", S3_BUCKET, getS3ObjectKey(cluster, topic, partition, i, TestS3Utils.FileType.INDEX)));
-            s3Client.putObject(PutObjectRequest.builder().bucket(S3_BUCKET).key(getS3ObjectKey(cluster, topic, partition, i, TestS3Utils.FileType.INDEX)).build(), RequestBody.empty());
-            LOG.info(String.format("Put empty object to bucket=%s, key=%s", S3_BUCKET, getS3ObjectKey(cluster, topic, partition, i, TestS3Utils.FileType.LOG)));
-            s3Client.putObject(PutObjectRequest.builder().bucket(S3_BUCKET).key(getS3ObjectKey(cluster, topic, partition, i, TestS3Utils.FileType.LOG)).build(), RequestBody.empty());
-            LOG.info(String.format("Put empty object to bucket=%s, key=%s", S3_BUCKET, getS3ObjectKey(cluster, topic, partition, i, TestS3Utils.FileType.TIMEINDEX)));
-            s3Client.putObject(PutObjectRequest.builder().bucket(S3_BUCKET).key(getS3ObjectKey(cluster, topic, partition, i, TestS3Utils.FileType.TIMEINDEX)).build(), RequestBody.empty());
+            LOG.info(String.format("Put empty object to bucket=%s, key=%s", S3_BUCKET, getS3ObjectKey(cluster, topic, partition, i, SegmentUtils.SegmentFileType.INDEX)));
+            s3Client.putObject(PutObjectRequest.builder().bucket(S3_BUCKET).key(getS3ObjectKey(cluster, topic, partition, i, SegmentUtils.SegmentFileType.INDEX)).build(), RequestBody.empty());
+            LOG.info(String.format("Put empty object to bucket=%s, key=%s", S3_BUCKET, getS3ObjectKey(cluster, topic, partition, i, SegmentUtils.SegmentFileType.LOG)));
+            s3Client.putObject(PutObjectRequest.builder().bucket(S3_BUCKET).key(getS3ObjectKey(cluster, topic, partition, i, SegmentUtils.SegmentFileType.LOG)).build(), RequestBody.empty());
+            LOG.info(String.format("Put empty object to bucket=%s, key=%s", S3_BUCKET, getS3ObjectKey(cluster, topic, partition, i, SegmentUtils.SegmentFileType.TIMEINDEX)));
+            s3Client.putObject(PutObjectRequest.builder().bucket(S3_BUCKET).key(getS3ObjectKey(cluster, topic, partition, i, SegmentUtils.SegmentFileType.TIMEINDEX)).build(), RequestBody.empty());
         }
     }
 
     protected void putEmptyObjectsDanglingEarliest(String cluster, String topic, int partition, long minOffset, long maxOffset, long numOffsetsPerFile) {
         for (long i = minOffset; i <= maxOffset; i += numOffsetsPerFile) {
-            LOG.info(String.format("Put empty object to bucket=%s, key=%s", S3_BUCKET, getS3ObjectKey(cluster, topic, partition, i, TestS3Utils.FileType.LOG)));
-            s3Client.putObject(PutObjectRequest.builder().bucket(S3_BUCKET).key(getS3ObjectKey(cluster, topic, partition, i, TestS3Utils.FileType.LOG)).build(), RequestBody.empty());
+            LOG.info(String.format("Put empty object to bucket=%s, key=%s", S3_BUCKET, getS3ObjectKey(cluster, topic, partition, i, SegmentUtils.SegmentFileType.LOG)));
+            s3Client.putObject(PutObjectRequest.builder().bucket(S3_BUCKET).key(getS3ObjectKey(cluster, topic, partition, i, SegmentUtils.SegmentFileType.LOG)).build(), RequestBody.empty());
             if (i == minOffset) {
                 continue;
             }
-            LOG.info(String.format("Put empty object to bucket=%s, key=%s", S3_BUCKET, getS3ObjectKey(cluster, topic, partition, i, TestS3Utils.FileType.INDEX)));
-            s3Client.putObject(PutObjectRequest.builder().bucket(S3_BUCKET).key(getS3ObjectKey(cluster, topic, partition, i, TestS3Utils.FileType.INDEX)).build(), RequestBody.empty());
-            LOG.info(String.format("Put empty object to bucket=%s, key=%s", S3_BUCKET, getS3ObjectKey(cluster, topic, partition, i, TestS3Utils.FileType.TIMEINDEX)));
-            s3Client.putObject(PutObjectRequest.builder().bucket(S3_BUCKET).key(getS3ObjectKey(cluster, topic, partition, i, TestS3Utils.FileType.TIMEINDEX)).build(), RequestBody.empty());
+            LOG.info(String.format("Put empty object to bucket=%s, key=%s", S3_BUCKET, getS3ObjectKey(cluster, topic, partition, i, SegmentUtils.SegmentFileType.INDEX)));
+            s3Client.putObject(PutObjectRequest.builder().bucket(S3_BUCKET).key(getS3ObjectKey(cluster, topic, partition, i, SegmentUtils.SegmentFileType.INDEX)).build(), RequestBody.empty());
+            LOG.info(String.format("Put empty object to bucket=%s, key=%s", S3_BUCKET, getS3ObjectKey(cluster, topic, partition, i, SegmentUtils.SegmentFileType.TIMEINDEX)));
+            s3Client.putObject(PutObjectRequest.builder().bucket(S3_BUCKET).key(getS3ObjectKey(cluster, topic, partition, i, SegmentUtils.SegmentFileType.TIMEINDEX)).build(), RequestBody.empty());
         }
     }
 
     protected void putEmptyObjects(String cluster, String topic, int partition, long minOffset, long maxOffset, long numOffsetsPerFile, int prefixEntropyNumDigits) {
         for (long i = minOffset; i <= maxOffset; i += numOffsetsPerFile) {
-            s3Client.putObject(PutObjectRequest.builder().bucket(S3_BUCKET).key(getS3ObjectKey(cluster, topic, partition, i, TestS3Utils.FileType.INDEX, prefixEntropyNumDigits)).build(), RequestBody.empty());
-            s3Client.putObject(PutObjectRequest.builder().bucket(S3_BUCKET).key(getS3ObjectKey(cluster, topic, partition, i, TestS3Utils.FileType.LOG, prefixEntropyNumDigits)).build(), RequestBody.empty());
-            s3Client.putObject(PutObjectRequest.builder().bucket(S3_BUCKET).key(getS3ObjectKey(cluster, topic, partition, i, TestS3Utils.FileType.TIMEINDEX, prefixEntropyNumDigits)).build(), RequestBody.empty());
+            s3Client.putObject(PutObjectRequest.builder().bucket(S3_BUCKET).key(getS3ObjectKey(cluster, topic, partition, i, SegmentUtils.SegmentFileType.INDEX, prefixEntropyNumDigits)).build(), RequestBody.empty());
+            s3Client.putObject(PutObjectRequest.builder().bucket(S3_BUCKET).key(getS3ObjectKey(cluster, topic, partition, i, SegmentUtils.SegmentFileType.LOG, prefixEntropyNumDigits)).build(), RequestBody.empty());
+            s3Client.putObject(PutObjectRequest.builder().bucket(S3_BUCKET).key(getS3ObjectKey(cluster, topic, partition, i, SegmentUtils.SegmentFileType.TIMEINDEX, prefixEntropyNumDigits)).build(), RequestBody.empty());
         }
     }
 
@@ -163,17 +161,17 @@ public class TestS3Base extends TestBase {
         }
     }
 
-    protected static String getS3ObjectKey(String topic, int partition, long offset, TestS3Utils.FileType fileType) {
+    protected static String getS3ObjectKey(String topic, int partition, long offset, SegmentUtils.SegmentFileType fileType) {
         return getS3ObjectKey(KAFKA_CLUSTER_ID, topic, partition, offset, fileType);
     }
 
-    protected static String getS3ObjectKey(String cluster, String topic, int partition, long offset, TestS3Utils.FileType fileType) {
-        return S3_BASE_PREFIX + "/" + cluster + "/" + topic + "-" + partition + "/" + S3Utils.getZeroPaddedOffset(offset) + "." + fileType.toString().toLowerCase();
+    protected static String getS3ObjectKey(String cluster, String topic, int partition, long offset, SegmentUtils.SegmentFileType fileType) {
+        return S3_BASE_PREFIX + "/" + cluster + "/" + topic + "-" + partition + "/" + Utils.getZeroPaddedOffset(offset) + "." + fileType.toString().toLowerCase();
     }
 
-    protected static String getS3ObjectKey(String cluster, String topic, int partition, long offset, TestS3Utils.FileType fileType, int prefixEntropyNumDigits) {
+    protected static String getS3ObjectKey(String cluster, String topic, int partition, long offset, SegmentUtils.SegmentFileType fileType, int prefixEntropyNumDigits) {
         return S3_BASE_PREFIX + "/" + Utils.getBinaryHashForClusterTopicPartition(cluster, topic, partition, prefixEntropyNumDigits) +
-                "/" + cluster + "/" + topic + "-" + partition + "/" + S3Utils.getZeroPaddedOffset(offset) + "." + fileType.toString().toLowerCase();
+                "/" + cluster + "/" + topic + "-" + partition + "/" + Utils.getZeroPaddedOffset(offset) + "." + fileType.toString().toLowerCase();
     }
 
     protected static String getS3ObjectKey(String cluster, String topic, int partition, String filename) {

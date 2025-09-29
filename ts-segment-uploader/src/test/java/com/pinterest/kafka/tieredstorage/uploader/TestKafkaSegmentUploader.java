@@ -3,6 +3,7 @@ package com.pinterest.kafka.tieredstorage.uploader;
 import com.pinterest.kafka.tieredstorage.common.CommonTestUtils;
 import com.pinterest.kafka.tieredstorage.common.discovery.s3.S3StorageServiceEndpoint;
 import com.pinterest.kafka.tieredstorage.common.discovery.s3.S3StorageServiceEndpointProvider;
+import com.pinterest.kafka.tieredstorage.uploader.management.S3SegmentManager;
 import com.salesforce.kafka.test.junit5.SharedKafkaTestResource;
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.common.TopicPartition;
@@ -22,9 +23,15 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.ExecutionException;
 
+import static com.pinterest.kafka.tieredstorage.uploader.TestBase.TEST_TOPIC_B;
+import static com.pinterest.kafka.tieredstorage.uploader.TestBase.createTopicAndVerify;
+import static com.pinterest.kafka.tieredstorage.uploader.TestBase.deleteTopicAndVerify;
+import static com.pinterest.kafka.tieredstorage.uploader.TestBase.overrideS3AsyncClientForFileUploader;
+import static com.pinterest.kafka.tieredstorage.uploader.TestBase.overrideS3ClientForFileDownloader;
+import static com.pinterest.kafka.tieredstorage.uploader.TestBase.sendTestData;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-public class TestKafkaSegmentUploader extends TestBase {
+public class TestKafkaSegmentUploader extends TestS3ContainerBase {
     @RegisterExtension
     private static final SharedKafkaTestResource sharedKafkaTestResource = new SharedKafkaTestResource()
             .withBrokerProperty("log.segment.bytes", "30000")
@@ -38,7 +45,7 @@ public class TestKafkaSegmentUploader extends TestBase {
     @BeforeEach
     public void setup() throws Exception {
         super.setup();
-        environmentProvider = createTestEnvironmentProvider(sharedKafkaTestResource);
+        environmentProvider = TestBase.createTestEnvironmentProvider(sharedKafkaTestResource);
         createTopicAndVerify(sharedKafkaTestResource, TEST_TOPIC_A, 3);
         createTopicAndVerify(sharedKafkaTestResource, TEST_TOPIC_B, 6);
         startSegmentUploaderThread();
@@ -68,6 +75,7 @@ public class TestKafkaSegmentUploader extends TestBase {
         String configDirectory = "src/test/resources";
         overrideS3ClientForFileDownloader(s3Client);
         overrideS3AsyncClientForFileUploader(s3AsyncClient);
+        S3SegmentManager.setS3Client(s3Client);
         uploader = new KafkaSegmentUploader(configDirectory, environmentProvider);
         uploader.start();
     }

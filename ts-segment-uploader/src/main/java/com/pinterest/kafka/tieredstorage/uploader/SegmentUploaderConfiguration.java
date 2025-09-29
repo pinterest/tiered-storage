@@ -76,6 +76,13 @@ public class SegmentUploaderConfiguration {
      */
     private static final String S3_PREFIX_ENTROPY_BITS = TS_SEGMENT_UPLOADER_PREFIX + "." + "s3.prefix.entropy.bits";
 
+    /**
+     * Interval in seconds to execute retention-based GC on remote storage
+     */
+    private static final String SEGMENT_MANAGER_GC_INTERVAL_SECONDS = TS_SEGMENT_UPLOADER_PREFIX + "." + "segment.manager.gc.interval.seconds";
+
+    private static final String SEGMENT_MANAGER_GC_RETENTION_SECONDS = TS_SEGMENT_UPLOADER_PREFIX + "." + "segment.manager.gc.%sretention.seconds";
+
     // Internal structures
     private final Properties properties = new Properties();
     private final Set<Pattern> includeRegexes = ConcurrentHashMap.newKeySet();
@@ -214,6 +221,23 @@ public class SegmentUploaderConfiguration {
         return Integer.parseInt(properties.getProperty(UPLOAD_MAX_RETRIES, String.valueOf(Defaults.DEFAULT_UPLOAD_MAX_RETRIES)));
     }
 
+    public int getSegmentManagerGcIntervalSeconds() {
+        return Integer.parseInt(properties.getProperty(SEGMENT_MANAGER_GC_INTERVAL_SECONDS, String.valueOf(Defaults.DEFAULT_SEGMENT_MANAGER_GC_INTERVAL_SECONDS)));
+    }
+
+    public int getSegmentManagerGcRetentionSeconds(String topic) {
+        String formattedKey;
+        if (topic == null || topic.isEmpty()) {
+            formattedKey = String.format(SEGMENT_MANAGER_GC_RETENTION_SECONDS, "");
+        } else {
+            formattedKey = String.format(SEGMENT_MANAGER_GC_RETENTION_SECONDS, topic + ".");
+            if (!properties.containsKey(formattedKey)) {
+                formattedKey = String.format(SEGMENT_MANAGER_GC_RETENTION_SECONDS, "");
+            }
+        }
+        return Integer.parseInt(properties.getProperty(formattedKey, String.valueOf(Defaults.DEFAULT_SEGMENT_MANAGER_GC_RETENTION_SECONDS)));
+    }
+
     public String getProperty(String key) {
         return properties.getProperty(key);
     }
@@ -252,5 +276,7 @@ public class SegmentUploaderConfiguration {
         private static final int DEFAULT_S3_PREFIX_ENTROPY_BITS = -1;
         private static final int DEFAULT_UPLOAD_TIMEOUT_MS = 60000;
         private static final int DEFAULT_UPLOAD_MAX_RETRIES = 3;
+        private static final int DEFAULT_SEGMENT_MANAGER_GC_INTERVAL_SECONDS = 60 * 60; // 1 hour
+        private static final int DEFAULT_SEGMENT_MANAGER_GC_RETENTION_SECONDS = 60 * 60 * 24 * 3;   // 3 days
     }
 }

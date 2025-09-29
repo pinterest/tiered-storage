@@ -9,6 +9,9 @@ import java.net.ConnectException;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.security.MessageDigest;
+import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class Utils {
 
@@ -78,5 +81,39 @@ public class Utils {
             throw new RuntimeException(
                     String.format("Failed to get binary hash for cluster=%s, topic=%s, partition=%s", cluster, topic, partition), e);
         }
+    }
+
+    /**
+     * Get the base offset from a filename.
+     * @param filename
+     * @return the base offset from the filename
+     */
+    public static Optional<Long> getBaseOffsetFromFilename(String filename) {
+        // match 20 digits at the end of the filename
+        Pattern pattern = Pattern.compile("^(.*/)?(\\d{20})\\.(log|index|timeindex)$");
+        Matcher matcher = pattern.matcher(filename);
+        if (matcher.matches()) {
+            return Optional.of(Long.parseLong(matcher.group(2)));
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * Returns a zero-padded offset string in the same format as Kafka's log segment file names
+     * @param offset
+     * @return zero-padded offset string
+     */
+    public static String getZeroPaddedOffset(long offset) {
+        return String.format("%020d", offset);
+    }
+
+    public static SegmentUtils.SegmentFileType getSegmentFileTypeFromName(String name) {
+        if (name.endsWith("." + SegmentUtils.SegmentFileType.LOG.name().toLowerCase()))
+            return SegmentUtils.SegmentFileType.LOG;
+        if (name.endsWith("." + SegmentUtils.SegmentFileType.INDEX.name().toLowerCase()))
+            return SegmentUtils.SegmentFileType.INDEX;
+        if (name.endsWith("." + SegmentUtils.SegmentFileType.TIMEINDEX.name().toLowerCase()))
+            return SegmentUtils.SegmentFileType.TIMEINDEX;
+        return null;
     }
 }

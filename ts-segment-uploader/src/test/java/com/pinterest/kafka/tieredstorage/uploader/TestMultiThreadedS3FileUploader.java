@@ -6,26 +6,22 @@ import com.pinterest.kafka.tieredstorage.common.discovery.s3.S3StorageServiceEnd
 import org.apache.kafka.common.TopicPartition;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import software.amazon.awssdk.auth.credentials.AnonymousCredentialsProvider;
-import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration;
 import software.amazon.awssdk.core.exception.ApiCallTimeoutException;
-import software.amazon.awssdk.regions.Region;
-import software.amazon.awssdk.services.s3.S3AsyncClient;
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Response;
 
 import java.io.IOException;
-import java.net.URI;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Paths;
-import java.time.Duration;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import static com.pinterest.kafka.tieredstorage.uploader.TestBase.TEST_DATA_LOG_DIRECTORY_PATH;
+import static com.pinterest.kafka.tieredstorage.uploader.TestBase.TEST_TOPIC_B;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-public class TestMultiThreadedS3FileUploader extends TestBase {
+public class TestMultiThreadedS3FileUploader extends TestS3ContainerBase {
     protected MultiThreadedS3FileUploader s3FileUploader;
     private S3StorageServiceEndpointProvider endpointProvider;
     private KafkaEnvironmentProvider environmentProvider;

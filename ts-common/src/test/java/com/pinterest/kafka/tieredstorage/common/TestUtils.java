@@ -1,4 +1,4 @@
-package com.pinterest.kafka.tieredstorage.common.discovery;
+package com.pinterest.kafka.tieredstorage.common;
 
 import com.codahale.metrics.Histogram;
 import com.codahale.metrics.MetricRegistry;
@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class TestUtils {
@@ -49,5 +50,23 @@ public class TestUtils {
         // Ensure that the standard deviation is less than 0.1% of the total number of tests
         assertTrue(stddev < (double) numTestCombinations / 1000);
 
+    }
+
+    @Test
+    void testGetBaseOffsetFromFilename() {
+        String index = "00000000000000000362.index";
+        String timeIndex = "00000000000000000362.timeindex";
+        String log = "00000000000000000362.log";
+
+        assertEquals(362L, Utils.getBaseOffsetFromFilename(index).get());
+        assertEquals(362L, Utils.getBaseOffsetFromFilename(timeIndex).get());
+        assertEquals(362L, Utils.getBaseOffsetFromFilename(log).get());
+
+        assertEquals(362L, Utils.getBaseOffsetFromFilename("/directory/directory2/" + index).get());
+        assertEquals(362L, Utils.getBaseOffsetFromFilename("directory/directory2/" + timeIndex).get());
+        assertEquals(362L, Utils.getBaseOffsetFromFilename("/directory/directory2/directory3/" + log).get());
+
+        assertFalse(Utils.getBaseOffsetFromFilename("offset.wm").isPresent());
+        assertFalse(Utils.getBaseOffsetFromFilename("/directory/asdf/_metadata").isPresent());
     }
 }

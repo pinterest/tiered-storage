@@ -19,9 +19,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
 
+import static com.pinterest.kafka.tieredstorage.uploader.TestBase.TEST_TOPIC_B;
+import static com.pinterest.kafka.tieredstorage.uploader.TestBase.createTopicAndVerify;
+import static com.pinterest.kafka.tieredstorage.uploader.TestBase.deleteTopicAndVerify;
+import static com.pinterest.kafka.tieredstorage.uploader.TestBase.overrideS3AsyncClientForFileUploader;
+import static com.pinterest.kafka.tieredstorage.uploader.TestBase.overrideS3ClientForFileDownloader;
+import static com.pinterest.kafka.tieredstorage.uploader.TestBase.reassignPartitions;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-public class TestDirectoryTreeWatcherMultiBroker extends TestBase {
+public class TestDirectoryTreeWatcherMultiBroker extends TestS3ContainerBase {
 
     @RegisterExtension
     private static final SharedKafkaTestResource sharedKafkaTestResource = new SharedKafkaTestResource()
@@ -37,7 +43,7 @@ public class TestDirectoryTreeWatcherMultiBroker extends TestBase {
         super.setup();
 
         // environment provider setup
-        KafkaEnvironmentProvider environmentProvider = createTestEnvironmentProvider(sharedKafkaTestResource);
+        KafkaEnvironmentProvider environmentProvider = TestBase.createTestEnvironmentProvider(sharedKafkaTestResource);
         environmentProvider.load();
 
         // override s3 client

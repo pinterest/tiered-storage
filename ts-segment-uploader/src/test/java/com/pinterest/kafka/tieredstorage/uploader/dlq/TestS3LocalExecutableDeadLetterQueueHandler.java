@@ -1,8 +1,9 @@
 package com.pinterest.kafka.tieredstorage.uploader.dlq;
 
+import com.pinterest.kafka.tieredstorage.common.SegmentUtils;
 import com.pinterest.kafka.tieredstorage.uploader.DirectoryTreeWatcher;
 import com.pinterest.kafka.tieredstorage.uploader.SegmentUploaderConfiguration;
-import com.pinterest.kafka.tieredstorage.uploader.TestBase;
+import com.pinterest.kafka.tieredstorage.uploader.TestS3ContainerBase;
 import org.apache.kafka.common.TopicPartition;
 import org.junit.jupiter.api.Test;
 
@@ -19,11 +20,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
 
+import static com.pinterest.kafka.tieredstorage.uploader.TestBase.setProperty;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-public class TestS3LocalExecutableDeadLetterQueueHandler extends TestBase {
+public class TestS3LocalExecutableDeadLetterQueueHandler extends TestS3ContainerBase {
 
     /**
      * Test the handler by having it send many tasks concurrently to a local executable file.
@@ -46,11 +48,11 @@ public class TestS3LocalExecutableDeadLetterQueueHandler extends TestBase {
                     TopicPartition tp = new TopicPartition(topic, partitionIdx);
                     String extension;
                     if (i % 3 == 0)
-                        extension = ".log";
+                        extension = SegmentUtils.getFileTypeSuffix(SegmentUtils.SegmentFileType.LOG);
                     else if (i % 3 == 1)
-                        extension = ".index";
+                        extension = SegmentUtils.getFileTypeSuffix(SegmentUtils.SegmentFileType.INDEX);
                     else
-                        extension = ".timeindex";
+                        extension = SegmentUtils.getFileTypeSuffix(SegmentUtils.SegmentFileType.TIMEINDEX);
                     String offset = String.format("%020d", i);
                     DirectoryTreeWatcher.UploadTask uploadTask = new DirectoryTreeWatcher.UploadTask(
                             tp,

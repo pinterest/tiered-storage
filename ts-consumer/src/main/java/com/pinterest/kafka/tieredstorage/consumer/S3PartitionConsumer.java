@@ -154,7 +154,7 @@ public class S3PartitionConsumer<K, V> {
      */
     private void reloadOffsetKeyMap(long position, String objectToStartFrom) {
         LOG.info("Reloading offsetKeyMap for position " + position + " and objectToStartFrom " + objectToStartFrom + " for " + topicPartition);
-        offsetKeyMap = S3Utils.getSortedOffsetKeyMap(location, topicPartition, S3Utils.getZeroPaddedOffset(position), objectToStartFrom, metricsConfiguration);
+        offsetKeyMap = S3Utils.getSortedOffsetKeyMap(location, topicPartition, com.pinterest.kafka.tieredstorage.common.Utils.getZeroPaddedOffset(position), objectToStartFrom, metricsConfiguration);
         lastOffsetKeyMapReloadTimestamp = System.currentTimeMillis();
     }
 

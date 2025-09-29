@@ -1,6 +1,7 @@
 package com.pinterest.kafka.tieredstorage.consumer;
 
 import com.pinterest.kafka.tieredstorage.common.CommonTestUtils;
+import com.pinterest.kafka.tieredstorage.common.SegmentUtils;
 import com.pinterest.kafka.tieredstorage.common.metrics.MetricsConfiguration;
 import com.pinterest.kafka.tieredstorage.common.metrics.NoOpMetricsReporter;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
@@ -41,7 +42,7 @@ public class TestS3PartitionConsumer extends TestS3Base {
         MetricsConfiguration metricsConfiguration = new MetricsConfiguration(true, metricsReporterClassName, null, null);
         S3PartitionConsumer<byte[], byte[]> s3PartitionConsumer = new S3PartitionConsumer<>(getS3BasePrefixWithCluster(), new TopicPartition(KAFKA_TOPIC, 4), CONSUMER_GROUP, properties, metricsConfiguration);
         assertEquals(100L, s3PartitionConsumer.beginningOffset());
-        s3Client.deleteObject(DeleteObjectRequest.builder().bucket(S3_BUCKET).key(getS3ObjectKey(KAFKA_TOPIC, 4, 100L, FileType.LOG)).build());
+        s3Client.deleteObject(DeleteObjectRequest.builder().bucket(S3_BUCKET).key(getS3ObjectKey(KAFKA_TOPIC, 4, 100L, SegmentUtils.SegmentFileType.LOG)).build());
         assertEquals(200L, s3PartitionConsumer.beginningOffset());
 
         // nonexistent offset for partition

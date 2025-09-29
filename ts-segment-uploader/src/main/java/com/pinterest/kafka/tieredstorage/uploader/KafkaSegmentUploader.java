@@ -3,11 +3,10 @@ package com.pinterest.kafka.tieredstorage.uploader;
 import com.google.common.annotations.VisibleForTesting;
 import com.pinterest.kafka.tieredstorage.common.discovery.StorageServiceEndpointProvider;
 import com.pinterest.kafka.tieredstorage.uploader.leadership.LeadershipWatcher;
-import org.apache.commons.configuration2.ex.ConfigurationException;
+import com.pinterest.kafka.tieredstorage.uploader.management.SegmentManager;
+
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
-import org.apache.zookeeper.KeeperException;
-
 import java.io.IOException;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
@@ -38,8 +37,10 @@ public class KafkaSegmentUploader {
         multiThreadedS3FileUploader = new MultiThreadedS3FileUploader(endpointProvider, config, environmentProvider);
         directoryTreeWatcher = new DirectoryTreeWatcher(multiThreadedS3FileUploader, config, environmentProvider);
 
-        LeadershipWatcher leadershipWatcher = getLeadershipWatcherFromConfigs(directoryTreeWatcher, config, environmentProvider);
+        LeadershipWatcher leadershipWatcher = LeadershipWatcher.createLeadershipWatcher(directoryTreeWatcher, config, environmentProvider);
+        SegmentManager segmentManager = SegmentManager.createSegmentManager(config, environmentProvider, endpointProvider, leadershipWatcher);
         DirectoryTreeWatcher.setLeadershipWatcher(leadershipWatcher);
+        DirectoryTreeWatcher.setSegmentManager(segmentManager);
 
         directoryTreeWatcher.initialize();
     }
@@ -63,14 +64,6 @@ public class KafkaSegmentUploader {
         Constructor<? extends KafkaEnvironmentProvider> environmentProviderConstructor = Class.forName(kafkaEnvironmentProviderClass)
                 .asSubclass(KafkaEnvironmentProvider.class).getConstructor();
         return environmentProviderConstructor.newInstance();
-    }
-
-    private static LeadershipWatcher getLeadershipWatcherFromConfigs(DirectoryTreeWatcher directoryTreeWatcher, SegmentUploaderConfiguration config, KafkaEnvironmentProvider kafkaEnvironmentProvider) throws InvocationTargetException, InstantiationException, IllegalAccessException, ClassNotFoundException, NoSuchMethodException {
-        String leadershipWatcherClassName = config.getLeadershipWatcherClassName();
-        LOG.info(String.format("LeadershipWatcher: %s", leadershipWatcherClassName));
-        Constructor<? extends LeadershipWatcher> leadershipWatcherConstructor = Class.forName(leadershipWatcherClassName)
-                .asSubclass(LeadershipWatcher.class).getConstructor(DirectoryTreeWatcher.class, SegmentUploaderConfiguration.class, KafkaEnvironmentProvider.class);
-        return leadershipWatcherConstructor.newInstance(directoryTreeWatcher, config, kafkaEnvironmentProvider);
     }
 
     @VisibleForTesting

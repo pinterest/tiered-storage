@@ -36,4 +36,11 @@ public class UploaderMetrics {
     public static final String RETRY_MARKED_FOR_DELETION_COUNT_METRIC = UPLOADER_METRIC_PREFIX + "." + "retry.marked.for.deletion.count";
     public static final String WATCHER_LEADERSHIP_EXCEPTION_METRIC = UPLOADER_METRIC_PREFIX + "." + "watcher.leadership.exception";
     public static final String WATERMARK_FILE_UPLOAD_ERROR_METRIC = UPLOADER_METRIC_PREFIX + "." + "watermark.file.upload.error";
+    public static final String SEGMENT_MANAGER_GC_DURATION_MS_METRIC = UPLOADER_METRIC_PREFIX + "." + "segment.manager.gc.duration.ms";
+    public static final String SEGMENT_MANAGER_GC_DELETION_FAILURE_COUNT_METRIC = UPLOADER_METRIC_PREFIX + "." + "segment.manager.gc.deletion.failure.count";
+    public static final String SEGMENT_MANAGER_GC_EXCEPTION_METRIC = UPLOADER_METRIC_PREFIX + "." + "segment.manager.gc.exception";
+    public static final String SEGMENT_MANAGER_LOG_START_OFFSET_METRIC = UPLOADER_METRIC_PREFIX + "." + "segment.manager.log.start.offset";
+    public static final String METADATA_UPDATE_LOCK_ACQUISITION_FAILURE_METRIC = UPLOADER_METRIC_PREFIX + "." + "metadata.update.lock.acquisition.failure";
+    public static final String METADATA_UPDATE_LATENCY_MS_METRIC = UPLOADER_METRIC_PREFIX + "." + "metadata.update.latency.ms";
+    public static final String METADATA_UPDATE_FAILURE_COUNT_METRIC = UPLOADER_METRIC_PREFIX + "." + "metadata.update.failure.count";
 }

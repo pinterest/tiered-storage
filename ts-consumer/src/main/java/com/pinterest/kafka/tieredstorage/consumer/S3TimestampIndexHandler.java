@@ -1,5 +1,6 @@
 package com.pinterest.kafka.tieredstorage.consumer;
 
+import com.pinterest.kafka.tieredstorage.common.SegmentUtils;
 import org.apache.commons.lang3.tuple.Triple;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -38,7 +39,9 @@ public class S3TimestampIndexHandler {
 
     private static ByteBuffer getFileContentInByteBuffer(Triple<String, String, Long> s3Path) {
         String logFileKey = s3Path.getMiddle();
-        assert (logFileKey.endsWith(".timeindex"));
+        if (!logFileKey.endsWith(SegmentUtils.getFileTypeSuffix(SegmentUtils.SegmentFileType.TIMEINDEX))) {
+            throw new RuntimeException(String.format("logFileKey %s must end with .timeindex", logFileKey));
+        }
         String timeIndexFileKey = logFileKey; //.substring(0, logFileKey.length() - 4);
         GetObjectRequest getObjectRequest = GetObjectRequest.builder().bucket(s3Path.getLeft()).key(timeIndexFileKey).build();
         //LOG.info("Object request: {}", getObjectRequest);

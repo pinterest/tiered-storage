@@ -1,6 +1,7 @@
 package com.pinterest.kafka.tieredstorage.consumer;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.pinterest.kafka.tieredstorage.common.SegmentUtils;
 import org.apache.commons.lang3.tuple.Triple;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
@@ -31,7 +32,7 @@ public class S3OffsetIndexHandler {
         String logFileKey = s3Path.getMiddle();
         String noExtensionFileKey = logFileKey.substring(0, logFileKey.lastIndexOf("."));
         long baseOffset = Long.parseLong(noExtensionFileKey.substring(noExtensionFileKey.lastIndexOf("/") + 1));
-        String indexFileKey =  noExtensionFileKey + ".index";
+        String indexFileKey = noExtensionFileKey + SegmentUtils.getFileTypeSuffix(SegmentUtils.SegmentFileType.INDEX);
         GetObjectRequest getObjectRequest = GetObjectRequest.builder().bucket(s3Path.getLeft()).key(indexFileKey).build();
         byte[] indexFileBytes = s3Client.getObject(getObjectRequest, ResponseTransformer.toBytes()).asByteArray();
         ByteBuffer indexFileByteBuffer = ByteBuffer.wrap(indexFileBytes);
@@ -47,10 +48,11 @@ public class S3OffsetIndexHandler {
     public int getMinimumBytePositionInFile(Triple<String, String, Long> s3Path, long offsetOfInterest) {
         if (currentS3Path != s3Path || indexFileByteBuffer == null || currentBaseOffset == null) {
             String logFileKey = s3Path.getMiddle();
-            assert (logFileKey.endsWith(".log"));
+            if (!logFileKey.endsWith(SegmentUtils.getFileTypeSuffix(SegmentUtils.SegmentFileType.LOG)))
+                throw new RuntimeException(String.format("logFileKey %s should end with .log", logFileKey));
             String noExtensionFileKey = logFileKey.substring(0, logFileKey.length() - 4);
             currentBaseOffset = Long.parseLong(noExtensionFileKey.substring(noExtensionFileKey.lastIndexOf("/") + 1));
-            String indexFileKey =  noExtensionFileKey + ".index";
+            String indexFileKey = noExtensionFileKey + SegmentUtils.getFileTypeSuffix(SegmentUtils.SegmentFileType.INDEX);
             GetObjectRequest getObjectRequest = GetObjectRequest.builder().bucket(s3Path.getLeft()).key(indexFileKey).build();
             byte[] indexFileBytes = s3Client.getObject(getObjectRequest, ResponseTransformer.toBytes()).asByteArray();
             indexFileByteBuffer = ByteBuffer.wrap(indexFileBytes);
