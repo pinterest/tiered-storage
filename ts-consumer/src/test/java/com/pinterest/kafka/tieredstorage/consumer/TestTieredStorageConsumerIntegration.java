@@ -37,9 +37,13 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import com.pinterest.kafka.tieredstorage.common.metadata.TimeIndex;
+import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
 
 import static com.pinterest.kafka.tieredstorage.common.CommonTestUtils.writeExpectedRecordFormatTestData;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -49,6 +53,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
+
 
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
@@ -973,6 +978,85 @@ public class TestTieredStorageConsumerIntegration extends TestS3Base {
         } else {
             assertEquals(100L, tsConsumer.position(new TopicPartition(TEST_TOPIC_A, 0)));
         }
+        tsConsumer.close();
+    }
+
+    @ParameterizedTest
+    @EnumSource(TieredStorageConsumer.TieredStorageMode.class)
+    void testOffsetsForTimesMultiPartition(TieredStorageConsumer.TieredStorageMode mode) throws Exception {
+        if (mode == TieredStorageConsumer.TieredStorageMode.KAFKA_ONLY) {
+            LOG.info("Skipping testOffsetsFortimesMultiPartition for KAKFA_ONLY mode");
+            return;
+        }
+
+        prepareS3Mocks();
+
+        putObjects(TEST_CLUSTER, TEST_TOPIC_A, 0, "src/test/resources/log-files/test_topic_a-0");
+        putObjects(TEST_CLUSTER, TEST_TOPIC_A, 1, "src/test/resources/log-files/test_topic_a-1");
+
+        tsConsumer = getTieredStorageConsumer(mode);
+        TopicPartition tp0 = new TopicPartition(TEST_TOPIC_A, 0);
+        TopicPartition tp1 = new TopicPartition(TEST_TOPIC_A, 1);
+        tsConsumer.assign(Arrays.asList(tp0, tp1));
+
+        Map<TopicPartition, Long> timestamps = new HashMap<>();
+        Optional<TimeIndex.TimeIndexEntry> targetEntry0 = S3Utils.loadSegmentTimeIndex(getS3BasePrefixWithCluster(), tp0, 362L)
+                .map(TimeIndex::getFirstEntry);
+        Optional<TimeIndex.TimeIndexEntry> targetEntry1 = S3Utils.loadSegmentTimeIndex(getS3BasePrefixWithCluster(), tp1, 729L)
+                .map(TimeIndex::getFirstEntry);
+        assertTrue(targetEntry0.isPresent());
+        assertTrue(targetEntry1.isPresent());
+        long ts0 = targetEntry0.get().getTimestamp();
+        long ts1 = targetEntry1.get().getTimestamp();
+        long expectedOffset0 = targetEntry0.get().getBaseOffset() + targetEntry0.get().getRelativeOffset();
+        long expectedOffset1 = targetEntry1.get().getBaseOffset() + targetEntry1.get().getRelativeOffset();
+        timestamps.put(tp0, ts0);
+        timestamps.put(tp1, ts1);
+
+        Map<TopicPartition, OffsetAndTimestamp> results = tsConsumer.offsetsForTimes(timestamps, Duration.ofSeconds(10));
+        assertEquals(2, results.size());
+        OffsetAndTimestamp r0 = results.get(tp0);
+        OffsetAndTimestamp r1 = results.get(tp1);
+        assertNotNull(r0);
+        assertNotNull(r1);
+        assertEquals(expectedOffset0, r0.offset());
+        assertEquals(expectedOffset1, r1.offset());
+
+        tsConsumer.close();
+        closeS3Mocks();
+    }
+
+    @ParameterizedTest
+    @EnumSource(TieredStorageConsumer.TieredStorageMode.class)
+    void testOffsetsForTimesMultiPartitionWithMockedKafkaOffsets(TieredStorageConsumer.TieredStorageMode mode) throws Exception {
+        if (mode == TieredStorageConsumer.TieredStorageMode.TIERED_STORAGE_ONLY) {
+            LOG.info("Skipping testOffsetsForTimesMultiPartitionWithMockedKafkaOffsets for TIERED_STORAGE_ONLY mode");
+            return;
+        }
+
+        Properties props = getStandardTieredStorageConsumerProperties(mode, sharedKafkaTestResource.getKafkaConnectString());
+        tsConsumer = new TieredStorageConsumer<>(props);
+
+        TopicPartition tp0 = new TopicPartition(TEST_TOPIC_A, 0);
+        TopicPartition tp1 = new TopicPartition(TEST_TOPIC_A, 1);
+
+        Map<TopicPartition, Long> timestamps = new HashMap<>();
+        timestamps.put(tp0, 5000L);
+        timestamps.put(tp1, 15000L);
+
+        Map<TopicPartition, OffsetAndTimestamp> kafkaOffsets = new HashMap<>();
+        kafkaOffsets.put(tp0, new OffsetAndTimestamp(42L, 5000L, null));
+        kafkaOffsets.put(tp1, new OffsetAndTimestamp(84L, 15000L, null));
+
+        KafkaConsumer<String, String> mockedKafkaConsumer = Mockito.mock(KafkaConsumer.class);
+        when(mockedKafkaConsumer.offsetsForTimes(timestamps, Duration.ofSeconds(5))).thenReturn(kafkaOffsets);
+        when(mockedKafkaConsumer.offsetsForTimes(timestamps, Duration.ofMillis(Long.MAX_VALUE))).thenReturn(kafkaOffsets);
+        when(mockedKafkaConsumer.offsetsForTimes(timestamps, Duration.ofSeconds(10))).thenReturn(kafkaOffsets);
+        tsConsumer.setKafkaConsumer(mockedKafkaConsumer);
+
+        Map<TopicPartition, OffsetAndTimestamp> results = tsConsumer.offsetsForTimes(timestamps, Duration.ofSeconds(5));
+        assertEquals(kafkaOffsets, results);
+
         tsConsumer.close();
     }
 

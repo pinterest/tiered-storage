@@ -1,5 +1,7 @@
 package com.pinterest.kafka.tieredstorage.consumer;
 
+import com.pinterest.kafka.tieredstorage.common.metadata.TimeIndex;
+import com.pinterest.kafka.tieredstorage.common.metadata.TopicPartitionMetadata;
 import com.pinterest.kafka.tieredstorage.common.metrics.MetricRegistryManager;
 import com.pinterest.kafka.tieredstorage.common.metrics.MetricsConfiguration;
 import org.apache.commons.lang3.tuple.Triple;
@@ -7,7 +9,6 @@ import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
 import org.apache.kafka.common.TopicPartition;
-import org.apache.kafka.common.annotation.InterfaceStability;
 import org.apache.kafka.common.header.Headers;
 import org.apache.kafka.common.header.internals.RecordHeaders;
 import org.apache.kafka.common.record.Record;
@@ -26,9 +27,11 @@ import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.NavigableMap;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.TreeMap;
+import java.util.concurrent.ConcurrentSkipListSet;
 
 /**
  * Consumes Kafka records in a given Kafka partition from S3
@@ -132,29 +135,41 @@ public class S3PartitionConsumer<K, V> {
     }
 
     /**
-     * Reloads the offsetKeyMap only if it is not initialized yet or if it is expired, or if the given position is not found in the map
+     * Reloads the offsetKeyMap only if it is not initialized yet or if it is expired, or if the given position is not found in the map. This method
+     * uses metadata entries + S3 listing to reload the offsetKeyMap so that we only get objects that are available in the metadata.
      */
     private void maybeReloadOffsetKeyMap(long position) {
         if (offsetKeyMap == null || offsetKeyMap.isEmpty()) {
             LOG.info(String.format("offsetKeyMap is empty / uninitialized. Loading offsetKeyMap for position=%s, topicPartition=%s", position, topicPartition));
-            reloadOffsetKeyMap(position, null);
+            reloadOffsetKeyMapWithOnlyMetadataEntries(position, null);
         } else if (offsetKeyMap.firstKey() > position || offsetKeyMap.lastKey() < position) {
             LOG.info(String.format("offsetKeyMap [%s,%s] does not contain position=%s. Reloading offsetKeyMap for topicPartition=%s", offsetKeyMap.firstKey(), offsetKeyMap.lastKey(), position, topicPartition));
-            reloadOffsetKeyMap(position, null);
+            reloadOffsetKeyMapWithOnlyMetadataEntries(position, null);
         } else if (System.currentTimeMillis() - lastOffsetKeyMapReloadTimestamp > s3MetadataReloadIntervalMs) {
             LOG.info(String.format("offsetKeyMap is expired after %sms. Reloading offsetKeyMap for position=%s, topicPartition=%s", s3MetadataReloadIntervalMs, position, topicPartition));
-            reloadOffsetKeyMap(position, null);
+            reloadOffsetKeyMapWithOnlyMetadataEntries(position, null);
         }
     }
 
     /**
-     * Reloads the offsetKeyMap starting from the given position
+     * Reloads the offsetKeyMap starting from the given position via S3 listing
      * @param position the position to start from
      * @param objectToStartFrom the object to start from
      */
     private void reloadOffsetKeyMap(long position, String objectToStartFrom) {
         LOG.info("Reloading offsetKeyMap for position " + position + " and objectToStartFrom " + objectToStartFrom + " for " + topicPartition);
         offsetKeyMap = S3Utils.getSortedOffsetKeyMap(location, topicPartition, com.pinterest.kafka.tieredstorage.common.Utils.getZeroPaddedOffset(position), objectToStartFrom, metricsConfiguration);
+        lastOffsetKeyMapReloadTimestamp = System.currentTimeMillis();
+    }
+
+    /**
+     * Reloads the offsetKeyMap starting from the given position via metadata entries + S3 listing
+     * @param position the position to start from
+     * @param objectToStartFrom the object to start from
+     */
+    private void reloadOffsetKeyMapWithOnlyMetadataEntries(long position, String objectToStartFrom) {
+        LOG.info("Reloading offsetKeyMap with only metadata entries for position " + position + " and objectToStartFrom " + objectToStartFrom + " for " + topicPartition);
+        offsetKeyMap = S3Utils.getSortedOffsetKeyMapMerged(location, topicPartition, com.pinterest.kafka.tieredstorage.common.Utils.getZeroPaddedOffset(position), objectToStartFrom, metricsConfiguration);
         lastOffsetKeyMapReloadTimestamp = System.currentTimeMillis();
     }
 
@@ -350,11 +365,8 @@ public class S3PartitionConsumer<K, V> {
             s3ObjectNext = offsetKeyMap.tailMap(offsetKeyMap.firstKey(), false).isEmpty() ? null :
                     offsetKeyMap.tailMap(offsetKeyMap.firstKey(), false).firstEntry().getValue();
         } else {
-            int count = 0;
             Map.Entry<Long, Triple<String, String, Long>> lastEntry = null;
             for (Map.Entry<Long, Triple<String, String, Long>> entry : offsetKeyMap.entrySet()) {
-                ++count;
-
                 if (lastEntry == null && position < entry.getKey()) {
                     activeS3Offset = entry.getKey();
                     s3Object = entry.getValue();
@@ -397,13 +409,154 @@ public class S3PartitionConsumer<K, V> {
         latestS3Object = latestS3Object.substring(0, latestS3Object.lastIndexOf("."));
         return s3Object;
     }
+    
+    /**
+     * Returns the offset and timestamp for the given timestamp. This method uses metadata entries to find the largest entry 
+     * with a timestamp less than or equal to the target timestamp. If no such entry is found, it returns the empty optional.
+     * The metadata entries are sorted by the last modified timestamp of the corresponding segment. This means that the timestamp
+     * entries is >= the last record timestamp of the corresponding segment.
+     * 
+     * To find the segment which contains the target timestamp, we start from the largest entry with a timestamp less than or equal to the target timestamp.
+     * This is the first segment that might contain the target timestamp. From this segment, we perform the following steps:
+     * 
+     * 1. Load the segment time index for the segment.
+     * 2. Find the largest timestamp in the segment's timeindex file
+     * 3. If the largest timestamp in the segment's timeindex file is less than the target timestamp, we continue to the next segment.
+     * 4. If the largest timestamp in the segment's timeindex file is greater than or equal to the target timestamp, we have found the segment.
+     * 5. Find the segment timeindex entry with a timestamp less than or equal to the target timestamp.
+     * 6. Perform a linear search forward from this timeindex entry to find the exact record with the first timestamp greater than or equal to the target timestamp.
+     * 
+     * @param timestamp
+     * @return Optional containing the offset and timestamp for the given timestamp, or empty optional if no such entry is found.
+     */
+    public Optional<OffsetAndTimestamp> offsetForTime(long timestamp) {
 
-    @InterfaceStability.Evolving
-    public Map<TopicPartition, OffsetAndTimestamp> offsetForTime(Long timestamp, Long beginningOffset, Long endOffset) {
-        //TODO: This needs a delicate implementation to avoid listing the whole prefix, which is an expensive operation,
-        // if possible. A naive approach is to do a binary search since we have the first and last offset (log segment)
-        // on S3
-        throw new UnsupportedOperationException("offsetForTime is not implemented yet");
+        Optional<TopicPartitionMetadata> metadataOptional = S3Utils.loadMetadata(location, topicPartition);
+        if (!metadataOptional.isPresent()) {
+            LOG.warn(String.format("No metadata available for %s when looking up offset for timestamp %s", topicPartition, timestamp));
+            return Optional.empty();
+        }
+
+        TimeIndex timeIndex = metadataOptional.get().getTimeIndex();
+        if (timeIndex == null || timeIndex.isEmpty()) {
+            LOG.warn(String.format("Metadata for %s does not contain time index entries when looking up timestamp %s", topicPartition, timestamp));
+            return Optional.empty();
+        }
+
+        ConcurrentSkipListSet<TimeIndex.TimeIndexEntry> entries = timeIndex.getEntriesCopy();
+        TimeIndex.TimeIndexEntry probe = new TimeIndex.TimeIndexEntry(timestamp, Integer.MIN_VALUE, Long.MIN_VALUE);
+        TimeIndex.TimeIndexEntry floorEntry = entries.floor(probe);
+
+        long initialBaseOffset = floorEntry != null ? floorEntry.getBaseOffset() : entries.first().getBaseOffset();
+
+        Optional<OffsetAndTimestamp> offsetAndTimestamp = findOffsetForTimestamp(timestamp, initialBaseOffset);
+        if (!offsetAndTimestamp.isPresent()) {
+            LOG.warn(String.format("Unable to locate offset for timestamp %s in %s", timestamp, topicPartition));
+            return Optional.empty();
+        }
+
+        return offsetAndTimestamp;
+    }
+
+    private Optional<OffsetAndTimestamp> findOffsetForTimestamp(long targetTimestamp, long initialBaseOffset) {
+        long startingOffset = Math.max(0L, initialBaseOffset);
+        ensureOffsetKeyMapCoversOffset(startingOffset);
+
+        if (offsetKeyMap == null || offsetKeyMap.isEmpty()) {
+            return Optional.empty();
+        }
+
+        Long startingSegmentOffset = offsetKeyMap.ceilingKey(startingOffset);
+        if (startingSegmentOffset == null) {
+            return Optional.empty();
+        }
+
+        NavigableMap<Long, Triple<String, String, Long>> segmentsView = offsetKeyMap.tailMap(startingSegmentOffset, true);
+        for (Map.Entry<Long, Triple<String, String, Long>> segmentEntry : segmentsView.entrySet()) {
+            long baseOffset = segmentEntry.getKey();
+
+            Optional<TimeIndex> segmentTimeIndexOptional = S3Utils.loadSegmentTimeIndex(location, topicPartition, baseOffset);
+            if (!segmentTimeIndexOptional.isPresent()) {
+                continue;
+            }
+
+            TimeIndex segmentTimeIndex = segmentTimeIndexOptional.get();
+            TimeIndex.TimeIndexEntry lastEntry = segmentTimeIndex.getLastEntry();
+            if (lastEntry == null || lastEntry.getTimestamp() < targetTimestamp) {
+                continue;
+            }
+
+            Optional<OffsetAndTimestamp> hit = scanSegmentForTimestamp(segmentEntry.getValue(), segmentTimeIndex, targetTimestamp);
+            if (hit.isPresent()) {
+                return hit;
+            }
+        }
+
+        return Optional.empty();
+    }
+
+    private Optional<OffsetAndTimestamp> scanSegmentForTimestamp(Triple<String, String, Long> logObject,
+                                                                 TimeIndex segmentTimeIndex,
+                                                                 long targetTimestamp) {
+        TimeIndex.TimeIndexEntry startEntry = segmentTimeIndex.findEntryForTimestamp(targetTimestamp);
+        if (startEntry == null) {
+            startEntry = segmentTimeIndex.getFirstEntry();
+        }
+
+        if (startEntry == null) {
+            return Optional.empty();
+        }
+
+        long startOffset = startEntry.getBaseOffset() + startEntry.getRelativeOffset();
+        int startPosition = s3OffsetIndexHandler.getMinimumBytePositionInFile(logObject, startOffset);
+
+        S3Records segmentRecords = null;
+        try {
+            segmentRecords = S3Records.open(
+                    logObject.getLeft(),
+                    logObject.getMiddle(),
+                    startPosition,
+                    false,
+                    true,
+                    logObject.getRight().intValue(),
+                    true);
+
+            Iterator<S3ChannelRecordBatch> batches = segmentRecords.batchesFrom(startPosition).iterator();
+            while (batches.hasNext()) {
+                S3ChannelRecordBatch batch = batches.next();
+                for (Record record : batch) {
+                    if (record.timestamp() >= targetTimestamp) {
+                        return Optional.of(new OffsetAndTimestamp(record.offset(), record.timestamp(), Optional.empty()));
+                    }
+                }
+            }
+        } catch (IOException e) {
+            LOG.error(String.format("Error scanning segment %s for timestamp %s", logObject.getMiddle(), targetTimestamp), e);
+        } finally {
+            if (segmentRecords != null) {
+                try {
+                    segmentRecords.close();
+                } catch (IOException ioe) {
+                    LOG.warn(String.format("Failed to close S3Records for %s", logObject.getMiddle()), ioe);
+                }
+            }
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * Perform a hard reload of the offsetKeyMap using S3 listing to ensure we get all objects that are available in S3
+     * @param offset
+     */
+    private void ensureOffsetKeyMapCoversOffset(long offset) {
+        reloadOffsetKeyMap(offset, null);
+        if (offsetKeyMap == null || offsetKeyMap.isEmpty()) {
+            return;
+        }
+
+        if (!offsetKeyMap.containsKey(offset)) {
+            reloadOffsetKeyMap(offset, null);
+        }
     }
 
     /**

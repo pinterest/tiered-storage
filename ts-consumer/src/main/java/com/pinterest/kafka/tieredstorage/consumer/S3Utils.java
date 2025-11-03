@@ -3,6 +3,8 @@ package com.pinterest.kafka.tieredstorage.consumer;
 import com.google.common.annotations.VisibleForTesting;
 import com.pinterest.kafka.tieredstorage.common.SegmentUtils;
 import com.pinterest.kafka.tieredstorage.common.Utils;
+import com.pinterest.kafka.tieredstorage.common.metadata.TimeIndex;
+import com.pinterest.kafka.tieredstorage.common.metadata.TopicPartitionMetadata;
 import com.pinterest.kafka.tieredstorage.common.metrics.MetricRegistryManager;
 import com.pinterest.kafka.tieredstorage.common.metrics.MetricsConfiguration;
 import org.apache.commons.lang3.tuple.Pair;
@@ -10,15 +12,25 @@ import org.apache.commons.lang3.tuple.Triple;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
+
+import software.amazon.awssdk.core.ResponseInputStream;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
+import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 import software.amazon.awssdk.services.s3.model.S3Object;
 import software.amazon.awssdk.services.s3.paginators.ListObjectsV2Iterable;
 
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.regex.Matcher;
@@ -203,6 +215,65 @@ public class S3Utils {
         LOG.info(String.format("Retrieved %s S3 objects [%s, %s].", sortedOffsetKeyMap.size(), sortedOffsetKeyMap.firstEntry(), sortedOffsetKeyMap.lastEntry()));
         return sortedOffsetKeyMap;
     }
+
+    public static TreeMap<Long, Triple<String, String, Long>> getSortedOffsetKeyMapMerged(String location, TopicPartition topicPartition, String offsetKey, String latestS3Object, MetricsConfiguration metricsConfiguration) {
+        Optional<TopicPartitionMetadata> metadata = loadMetadata(location, topicPartition);
+        if (!metadata.isPresent()) {
+            LOG.error(String.format("No metadata found for %s in %s, falling back to S3 listing", topicPartition, location));
+            return getSortedOffsetKeyMap(location, topicPartition, offsetKey, latestS3Object, metricsConfiguration);
+        }
+        TimeIndex timeIndex = metadata.get().getTimeIndex();
+        TreeMap<Long, Triple<String, String, Long>> sortedOffsetKeyMap = getSortedOffsetKeyMap(location, topicPartition, offsetKey, latestS3Object, metricsConfiguration);
+        // remove entries that are not in metadata
+        sortedOffsetKeyMap.keySet().retainAll(timeIndex.getEntriesCopy().stream().map(TimeIndex.TimeIndexEntry::getBaseOffset).collect(Collectors.toSet()));
+        LOG.info(String.format("Retrieved %s S3 objects [%s, %s].", sortedOffsetKeyMap.size(), sortedOffsetKeyMap.firstEntry(), sortedOffsetKeyMap.lastEntry()));
+        return sortedOffsetKeyMap;
+    }
+
+    public static Optional<TopicPartitionMetadata> loadMetadata(String location, TopicPartition topicPartition) {
+        Pair<String, String> s3Path = getPartitionPath(location, topicPartition);
+        String bucket = s3Path.getLeft();
+        String key = s3Path.getRight();
+        GetObjectRequest request = GetObjectRequest.builder().bucket(bucket).key(key + TopicPartitionMetadata.FILENAME).build();
+        try {
+            long start = System.currentTimeMillis();
+            try (ResponseInputStream<GetObjectResponse> responseStream = s3Client.getObject(request);
+                BufferedReader reader = new BufferedReader(new InputStreamReader(responseStream, StandardCharsets.UTF_8))) {
+                String content = reader.lines().collect(Collectors.joining("\n"));
+                GetObjectResponse response = responseStream.response();
+                String eTag = response.eTag();
+
+                TopicPartitionMetadata tpMetadata = TopicPartitionMetadata.loadFromJson(content);
+                tpMetadata.setLoadHash(eTag);
+                LOG.info(String.format("Retrieved TopicPartitionMetadata from s3://%s/%s%s in %sms", bucket, key, TopicPartitionMetadata.FILENAME, System.currentTimeMillis() - start));
+                return Optional.of(tpMetadata);
+            }
+        } catch (NoSuchKeyException e) {
+            LOG.warn(String.format("Cannot find metadata file under s3://%s/%s%s", bucket, key, TopicPartitionMetadata.FILENAME));
+            return Optional.empty();
+        } catch (Exception e) {
+            LOG.error(String.format("Failed to retrieve metadata from s3://%s/%s%s", bucket, key, TopicPartitionMetadata.FILENAME), e);
+            return Optional.empty();
+        }
+    }
+
+    public static Optional<TimeIndex> loadSegmentTimeIndex(String location, TopicPartition topicPartition, long baseOffset) {
+        Pair<String, String> s3Path = getPartitionPath(location, topicPartition);
+        String bucket = s3Path.getLeft();
+        String prefix = s3Path.getRight();
+        String timeIndexKey = prefix + Utils.getZeroPaddedOffset(baseOffset) + SegmentUtils.getFileTypeSuffix(SegmentUtils.SegmentFileType.TIMEINDEX);
+        GetObjectRequest request = GetObjectRequest.builder().bucket(bucket).key(timeIndexKey).build();
+        try (ResponseInputStream<GetObjectResponse> responseStream = s3Client.getObject(request)) {
+            TimeIndex segmentTimeIndex = TimeIndex.loadFromSegmentTimeIndex(responseStream, baseOffset);
+            return Optional.of(segmentTimeIndex);
+        } catch (NoSuchKeyException e) {
+            LOG.warn(String.format("Cannot find segment timeindex file for topicPartition=%s at s3://%s/%s", topicPartition, bucket, timeIndexKey));
+        } catch (IOException e) {
+            LOG.error(String.format("Failed to load segment timeindex for topicPartition=%s from s3://%s/%s", topicPartition, bucket, timeIndexKey), e);
+        }
+        return Optional.empty();
+    }
+
     @VisibleForTesting
     protected static void overrideS3Client(S3Client newS3Client) {
         s3Client = newS3Client;

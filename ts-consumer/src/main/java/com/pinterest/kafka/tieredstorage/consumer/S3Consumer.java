@@ -3,12 +3,14 @@ package com.pinterest.kafka.tieredstorage.consumer;
 import com.pinterest.kafka.tieredstorage.common.discovery.s3.S3StorageServiceEndpoint;
 import com.pinterest.kafka.tieredstorage.common.metrics.MetricsConfiguration;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.Deserializer;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 
 import java.io.IOException;
+import java.time.Duration;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -87,6 +89,11 @@ public class S3Consumer<K, V> {
      */
     public Map<TopicPartition, Long> endOffsets(Collection<TopicPartition> partitions) {
         return s3PartitionsConsumer.endOffsets(partitions);
+    }
+
+    public Map<TopicPartition, OffsetAndTimestamp> offsetsForTimes(Map<TopicPartition, Long> timestampsToSearch,
+                                                                   Duration timeout) {
+        return s3PartitionsConsumer.offsetsForTimes(timestampsToSearch, timeout);
     }
 
     /**

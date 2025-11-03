@@ -41,6 +41,7 @@ import java.util.OptionalLong;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
 import java.util.regex.Pattern;
 
 /**
@@ -824,13 +825,60 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
     @Override
     @InterfaceStability.Evolving
     public Map<TopicPartition, OffsetAndTimestamp> offsetsForTimes(Map<TopicPartition, Long> timestampsToSearch) {
-        throw new UnsupportedOperationException("offsetsForTimes is not supported for TieredStorageConsumer yet");
+        return offsetsForTimes(timestampsToSearch, Duration.ofMillis(Long.MAX_VALUE));
     }
 
     @Override
     @InterfaceStability.Evolving
     public Map<TopicPartition, OffsetAndTimestamp> offsetsForTimes(Map<TopicPartition, Long> timestampsToSearch, Duration timeout) {
-        throw new UnsupportedOperationException("offsetsForTimes is not supported for TieredStorageConsumer yet");
+        if (timestampsToSearch == null || timestampsToSearch.isEmpty()) {
+            return Collections.emptyMap();
+        }
+
+        switch (tieredStorageMode) {
+            case KAFKA_ONLY:
+                return kafkaConsumer.offsetsForTimes(timestampsToSearch, timeout);
+            case TIERED_STORAGE_ONLY:
+                return offsetsForTimesFromS3(timestampsToSearch, timeout);
+            case KAFKA_PREFERRED:
+                Map<TopicPartition, OffsetAndTimestamp> kafkaResults = kafkaConsumer.offsetsForTimes(timestampsToSearch, timeout);
+                Set<TopicPartition> missing = timestampsToSearch.keySet().stream()
+                        .filter(tp -> kafkaResults.get(tp) == null)
+                        .collect(Collectors.toSet());
+
+                if (missing.isEmpty()) {
+                    return kafkaResults;
+                }
+
+                Map<TopicPartition, OffsetAndTimestamp> s3Results = offsetsForTimesFromS3(timestampsToSearch, timeout, missing);
+                Map<TopicPartition, OffsetAndTimestamp> combined = new HashMap<>(kafkaResults);
+                combined.putAll(s3Results);
+                return combined;
+            default:
+                return kafkaConsumer.offsetsForTimes(timestampsToSearch, timeout);
+        }
+    }
+
+    private Map<TopicPartition, OffsetAndTimestamp> offsetsForTimesFromS3(Map<TopicPartition, Long> timestampsToSearch,
+                                                                         Duration timeout) {
+        return offsetsForTimesFromS3(timestampsToSearch, timeout, timestampsToSearch.keySet());
+    }
+
+    private Map<TopicPartition, OffsetAndTimestamp> offsetsForTimesFromS3(Map<TopicPartition, Long> timestampsToSearch,
+                                                                         Duration timeout,
+                                                                         Collection<TopicPartition> partitionsToQuery) {
+        if (!tieredStorageConsumptionPossible() || s3Consumer == null || partitionsToQuery.isEmpty()) {
+            return Collections.emptyMap();
+        }
+
+        setTieredStorageLocations(partitionsToQuery.stream().map(TopicPartition::topic).collect(Collectors.toSet()));
+        s3Consumer.assign(partitionsToQuery);
+
+        Map<TopicPartition, Long> filtered = timestampsToSearch.entrySet().stream()
+                .filter(entry -> partitionsToQuery.contains(entry.getKey()))
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+
+        return s3Consumer.offsetsForTimes(filtered, timeout);
     }
 
     @VisibleForTesting

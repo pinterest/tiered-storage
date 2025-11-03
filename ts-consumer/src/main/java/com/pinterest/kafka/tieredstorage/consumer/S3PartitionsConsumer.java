@@ -18,6 +18,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 
@@ -174,10 +175,33 @@ public class S3PartitionsConsumer<K, V> {
 
     @InterfaceStability.Evolving
     public Map<TopicPartition, OffsetAndTimestamp> offsetsForTimes(
-            Map<TopicPartition, Long> timestampsToSearch, Duration timeout,
-            Map<TopicPartition, Long> beginningOffsets, Map<TopicPartition, Long> endOffsets
-    ) {
-        throw new UnsupportedOperationException("offsetsForTimes is not supported for S3PartitionsConsumer yet");
+            Map<TopicPartition, Long> timestampsToSearch, Duration timeout) {
+        Map<TopicPartition, OffsetAndTimestamp> results = new HashMap<>();
+        if (timestampsToSearch == null || timestampsToSearch.isEmpty()) {
+            return results;
+        }
+
+        timestampsToSearch.forEach((topicPartition, timestamp) -> {
+            if (timestamp == null) {
+                return;
+            }
+
+            S3PartitionConsumer<K, V> partitionConsumer = s3PartitionConsumerMap.get(topicPartition);
+            if (partitionConsumer == null) {
+                LOG.warn(String.format("No S3PartitionConsumer registered for %s when searching timestamp %s", topicPartition, timestamp));
+                return;
+            }
+
+            Optional<OffsetAndTimestamp> maybeResult = partitionConsumer.offsetForTime(timestamp);
+            if (!maybeResult.isPresent()) {
+                return;
+            }
+
+            OffsetAndTimestamp offsetAndTimestamp = maybeResult.get();
+            results.put(topicPartition, offsetAndTimestamp);
+        });
+
+        return results;
     }
 
     /**
