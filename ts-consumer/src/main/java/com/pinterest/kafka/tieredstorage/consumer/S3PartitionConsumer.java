@@ -413,8 +413,8 @@ public class S3PartitionConsumer<K, V> {
     /**
      * Returns the offset and timestamp for the given timestamp. This method uses metadata entries to find the largest entry 
      * with a timestamp less than or equal to the target timestamp. If no such entry is found, it returns the empty optional.
-     * The metadata entries are sorted by the last modified timestamp of the corresponding segment. This means that the timestamp
-     * entries is >= the last record timestamp of the corresponding segment.
+     * The metadata entries are sorted by the last modified timestamp of the corresponding segment. This means that each timestamp
+     * entry is greater than or equal to the last record timestamp of the corresponding segment.
      * 
      * To find the segment which contains the target timestamp, we start from the largest entry with a timestamp less than or equal to the target timestamp.
      * This is the first segment that might contain the target timestamp. From this segment, we perform the following steps:
