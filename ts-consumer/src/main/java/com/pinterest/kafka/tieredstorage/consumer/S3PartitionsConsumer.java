@@ -194,6 +194,8 @@ public class S3PartitionsConsumer<K, V> {
 
             Optional<OffsetAndTimestamp> maybeResult = partitionConsumer.offsetForTime(timestamp);
             if (!maybeResult.isPresent()) {
+                LOG.warn(String.format("No offset found for timestamp %s in %s", timestamp, topicPartition));
+                results.put(topicPartition, null);
                 return;
             }
 

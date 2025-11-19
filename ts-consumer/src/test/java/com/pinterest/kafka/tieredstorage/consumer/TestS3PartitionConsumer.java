@@ -177,6 +177,62 @@ public class TestS3PartitionConsumer extends TestS3Base {
     }
 
     @Test
+    void testOffsetForTimeBeforeEarliestTimestampReturnsEarliest() throws IOException {
+        prepareS3Mocks();
+
+        putObjects(KAFKA_CLUSTER_ID, "test_topic_a", 0, "src/test/resources/log-files/test_topic_a-0");
+        Properties properties = getConsumerProperties();
+        S3Utils.overrideS3Client(s3Client);
+        S3OffsetIndexHandler.overrideS3Client(s3Client);
+        String metricsReporterClassName = NoOpMetricsReporter.class.getName();
+        MetricsConfiguration metricsConfiguration = new MetricsConfiguration(true, metricsReporterClassName, null, null);
+        TopicPartition topicPartition = new TopicPartition("test_topic_a", 0);
+        S3PartitionConsumer<String, String> s3PartitionConsumer = new S3PartitionConsumer<>(getS3BasePrefixWithCluster(), topicPartition, CONSUMER_GROUP, properties, metricsConfiguration,
+                new StringDeserializer(), new StringDeserializer());
+
+        TreeMap<Long, Triple<String, String, Long>> offsetMap = S3Utils.getSortedOffsetKeyMap(getS3BasePrefixWithCluster(), topicPartition, Utils.getZeroPaddedOffset(0L), null, metricsConfiguration);
+        assertFalse(offsetMap.isEmpty());
+
+        long earliestSegmentBaseOffset = offsetMap.firstKey();
+        long targetTimestamp = 1L;
+
+        Optional<OffsetAndTimestamp> result = s3PartitionConsumer.offsetForTime(targetTimestamp);
+        assertTrue(result.isPresent());
+        OffsetAndTimestamp offsetAndTimestamp = result.get();
+        assertEquals(earliestSegmentBaseOffset, offsetAndTimestamp.offset());
+        closeS3Mocks();
+    }
+
+    @Test
+    void testOffsetForTimeAfterLatestTimestampReturnsEmpty() throws IOException {
+        prepareS3Mocks();
+
+        putObjects(KAFKA_CLUSTER_ID, "test_topic_a", 0, "src/test/resources/log-files/test_topic_a-0");
+        Properties properties = getConsumerProperties();
+        S3Utils.overrideS3Client(s3Client);
+        S3OffsetIndexHandler.overrideS3Client(s3Client);
+        String metricsReporterClassName = NoOpMetricsReporter.class.getName();
+        MetricsConfiguration metricsConfiguration = new MetricsConfiguration(true, metricsReporterClassName, null, null);
+        TopicPartition topicPartition = new TopicPartition("test_topic_a", 0);
+        S3PartitionConsumer<String, String> s3PartitionConsumer = new S3PartitionConsumer<>(getS3BasePrefixWithCluster(), topicPartition, CONSUMER_GROUP, properties, metricsConfiguration,
+                new StringDeserializer(), new StringDeserializer());
+
+        TreeMap<Long, Triple<String, String, Long>> offsetMap = S3Utils.getSortedOffsetKeyMap(getS3BasePrefixWithCluster(), topicPartition, Utils.getZeroPaddedOffset(0L), null, metricsConfiguration);
+        assertFalse(offsetMap.isEmpty());
+
+        long latestSegmentBaseOffset = offsetMap.lastKey();
+        TimeIndex latestSegmentTimeIndex = S3Utils.loadSegmentTimeIndex(getS3BasePrefixWithCluster(), topicPartition, latestSegmentBaseOffset).orElseThrow(IllegalStateException::new);
+        TimeIndex.TimeIndexEntry latestEntry = latestSegmentTimeIndex.getLastEntry();
+        assertNotNull(latestEntry);
+
+        long targetTimestamp = latestEntry.getTimestamp() + 1000;
+
+        Optional<OffsetAndTimestamp> result = s3PartitionConsumer.offsetForTime(targetTimestamp);
+        assertFalse(result.isPresent());
+        closeS3Mocks();
+    }
+
+    @Test
     void testOffsetForTimeWithTimeIndexGap() throws IOException {
         prepareS3Mocks();
 
