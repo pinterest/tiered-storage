@@ -503,7 +503,7 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
      */
     @Override
     public Map<TopicPartition, Long> beginningOffsets(Collection<TopicPartition> partitions, Duration timeout) {
-        Map<TopicPartition, Long> s3Offsets = null;
+        Map<TopicPartition, Long> s3Offsets;
         Map<TopicPartition, Long> result = new HashMap<>();
         if (tieredStorageConsumptionPossible()) {
             // if tiered storage consumption is possible, we want to see the TS offsets as well
@@ -517,6 +517,8 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
                 // only tiered storage consumption is enabled so TS beginning offsets is what we return
                 return s3Offsets;
             }
+        } else {
+            s3Offsets = Collections.emptyMap();
         }
         // if we haven't yet returned, we need to get the beginning offsets from Kafka
         Map<TopicPartition, Long> kafkaOffsets = kafkaConsumer.beginningOffsets(partitions, timeout);
@@ -526,9 +528,10 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
             return kafkaOffsets;
         } else {
             // we are in KAFKA_PREFERRED mode, get earliest for either kafka or s3 depending on which is earlier
-            s3Offsets.forEach((topicPartition, s3Offset) -> {
-                Long kafkaOffset = kafkaOffsets.get(topicPartition);
-                result.put(topicPartition, Math.min(kafkaOffset, s3Offset));
+            partitions.forEach(partition -> {
+                long kafkaOffset = kafkaOffsets.getOrDefault(partition, Long.MAX_VALUE);
+                long s3Offset = s3Offsets.getOrDefault(partition, Long.MAX_VALUE);
+                result.put(partition, Math.min(kafkaOffset, s3Offset));
             });
         }
         return result;
@@ -823,13 +826,11 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
     }
 
     @Override
-    @InterfaceStability.Evolving
     public Map<TopicPartition, OffsetAndTimestamp> offsetsForTimes(Map<TopicPartition, Long> timestampsToSearch) {
         return offsetsForTimes(timestampsToSearch, Duration.ofMillis(Long.MAX_VALUE));
     }
 
     @Override
-    @InterfaceStability.Evolving
     public Map<TopicPartition, OffsetAndTimestamp> offsetsForTimes(Map<TopicPartition, Long> timestampsToSearch, Duration timeout) {
         if (timestampsToSearch == null || timestampsToSearch.isEmpty()) {
             return Collections.emptyMap();
@@ -842,17 +843,26 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
                 return offsetsForTimesFromS3(timestampsToSearch, timeout);
             case KAFKA_PREFERRED:
                 Map<TopicPartition, OffsetAndTimestamp> kafkaResults = kafkaConsumer.offsetsForTimes(timestampsToSearch, timeout);
-                Set<TopicPartition> missing = timestampsToSearch.keySet().stream()
-                        .filter(tp -> kafkaResults.get(tp) == null)
-                        .collect(Collectors.toSet());
-
-                if (missing.isEmpty()) {
-                    return kafkaResults;
-                }
-
-                Map<TopicPartition, OffsetAndTimestamp> s3Results = offsetsForTimesFromS3(timestampsToSearch, timeout, missing);
-                Map<TopicPartition, OffsetAndTimestamp> combined = new HashMap<>(kafkaResults);
-                combined.putAll(s3Results);
+                Map<TopicPartition, OffsetAndTimestamp> s3Results = offsetsForTimesFromS3(timestampsToSearch, timeout);
+                Map<TopicPartition, OffsetAndTimestamp> combined = new HashMap<>();
+                // combine the kafka and s3 results, using the s3 results if their offsets are less than the kafka results
+                timestampsToSearch.forEach((topicPartition, timestamp) -> {
+                    OffsetAndTimestamp kafkaOffset = kafkaResults.get(topicPartition);
+                    OffsetAndTimestamp s3Offset = s3Results.get(topicPartition);
+                    if (kafkaOffset != null && s3Offset != null) {
+                        if (s3Offset.offset() < kafkaOffset.offset()) {
+                            combined.put(topicPartition, s3Offset);
+                        } else {
+                            combined.put(topicPartition, kafkaOffset);
+                        }
+                    } else if (kafkaOffset == null && s3Offset != null) {
+                        combined.put(topicPartition, s3Offset);
+                    } else if (s3Offset == null && kafkaOffset != null) {
+                        combined.put(topicPartition, kafkaOffset);
+                    } else {
+                        combined.put(topicPartition, null);
+                    }
+                });
                 return combined;
             default:
                 return kafkaConsumer.offsetsForTimes(timestampsToSearch, timeout);
