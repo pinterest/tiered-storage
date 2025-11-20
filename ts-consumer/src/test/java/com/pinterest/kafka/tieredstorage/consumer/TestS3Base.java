@@ -3,6 +3,10 @@ package com.pinterest.kafka.tieredstorage.consumer;
 import com.adobe.testing.s3mock.junit5.S3MockExtension;
 import com.pinterest.kafka.tieredstorage.common.SegmentUtils;
 import com.pinterest.kafka.tieredstorage.common.Utils;
+import com.pinterest.kafka.tieredstorage.common.metadata.TimeIndex;
+import com.pinterest.kafka.tieredstorage.common.metadata.TopicPartitionMetadata;
+
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.record.S3Records;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
@@ -24,9 +28,11 @@ import software.amazon.nio.spi.s3.S3FileSystemProvider;
 import software.amazon.nio.spi.s3.TestS3SeekableByteChannel;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.net.URI;
+import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -148,17 +154,81 @@ public class TestS3Base extends TestBase {
         putEmptyObjects(KAFKA_CLUSTER_ID, topic, partition, minOffset, maxOffset, numOffsetsPerFile);
     }
 
+    protected void putMetadataFile(String cluster, String topic, int partition, long minOffset, long maxOffset, long numOffsetsPerFile) {
+        TimeIndex timeIndex = new TimeIndex(TimeIndex.TimeIndexType.TOPIC_PARTITION);
+        for (long i = minOffset; i <= maxOffset; i += numOffsetsPerFile) {
+            timeIndex.insertEntry(new TimeIndex.TimeIndexEntry(System.currentTimeMillis(), 0, i));
+        }
+        TopicPartitionMetadata topicPartitionMetadata = new TopicPartitionMetadata(new TopicPartition(topic, partition));
+        topicPartitionMetadata.updateMetadata(TopicPartitionMetadata.TIMEINDEX_KEY, timeIndex);
+        s3Client.putObject(PutObjectRequest.builder().bucket(S3_BUCKET).key(getS3ObjectKey(cluster, topic, partition, TopicPartitionMetadata.FILENAME)).build(), RequestBody.fromString(topicPartitionMetadata.getAsJsonString()));
+        LOG.info(String.format("Put metadata file to bucket=%s, key=%s", S3_BUCKET, getS3ObjectKey(cluster, topic, partition, TopicPartitionMetadata.FILENAME)));
+    }
+
     protected void putObjects(String cluster, String topic, int partition, String directory) {
         File directoryFile = new File(directory);
         File[] filesToUpload = directoryFile.listFiles();
         if (filesToUpload == null) {
             return;
         }
+        TimeIndex timeIndex = new TimeIndex(TimeIndex.TimeIndexType.TOPIC_PARTITION);
         for (File file : filesToUpload) {
             String key = getS3ObjectKey(cluster, topic, partition, file.getName());
+            Optional<Long> baseOffset = Utils.getBaseOffsetFromFilename(key);
             s3Client.putObject(PutObjectRequest.builder().bucket(S3_BUCKET).key(key).build(), RequestBody.fromFile(file));
             LOG.info(String.format("Put %s to bucket=%s, key=%s", file.getAbsolutePath(), S3_BUCKET, key));
+
+            if (baseOffset.isPresent() && file.getName().endsWith(SegmentUtils.getFileTypeSuffix(SegmentUtils.SegmentFileType.TIMEINDEX))) {
+                try (FileInputStream fis = new FileInputStream(file)) {
+                    TimeIndex segmentTimeIndex = TimeIndex.loadFromSegmentTimeIndex(fis, baseOffset.get());
+                    TimeIndex.TimeIndexEntry lastEntry = segmentTimeIndex.getLastEntry();
+                    if (lastEntry != null) {
+                        timeIndex.insertEntry(new TimeIndex.TimeIndexEntry(lastEntry.getTimestamp(), lastEntry.getRelativeOffset(), lastEntry.getBaseOffset()));
+                    }
+                } catch (IOException e) {
+                    throw new RuntimeException(String.format("Failed to read timeindex file %s", file.getAbsolutePath()), e);
+                }
+            }
         }
+        TopicPartitionMetadata topicPartitionMetadata = new TopicPartitionMetadata(new TopicPartition(topic, partition));
+        topicPartitionMetadata.updateMetadata(TopicPartitionMetadata.TIMEINDEX_KEY, timeIndex);
+        s3Client.putObject(PutObjectRequest.builder().bucket(S3_BUCKET).key(getS3ObjectKey(cluster, topic, partition, TopicPartitionMetadata.FILENAME)).build(), RequestBody.fromString(topicPartitionMetadata.getAsJsonString()));
+        LOG.info(String.format("Put metadata file to bucket=%s, key=%s", S3_BUCKET, getS3ObjectKey(cluster, topic, partition, TopicPartitionMetadata.FILENAME)));
+    }
+
+    protected void putObjectsWithGapInTimeIndex(String cluster, String topic, int partition, String directory, long missingBaseOffset) {
+        File directoryFile = new File(directory);
+        File[] filesToUpload = directoryFile.listFiles();
+        if (filesToUpload == null) {
+            return;
+        }
+        TimeIndex timeIndex = new TimeIndex(TimeIndex.TimeIndexType.TOPIC_PARTITION);
+        for (File file : filesToUpload) {
+            String key = getS3ObjectKey(cluster, topic, partition, file.getName());
+            Optional<Long> baseOffset = Utils.getBaseOffsetFromFilename(key);
+            s3Client.putObject(PutObjectRequest.builder().bucket(S3_BUCKET).key(key).build(), RequestBody.fromFile(file));
+            LOG.info(String.format("Put %s to bucket=%s, key=%s", file.getAbsolutePath(), S3_BUCKET, key));
+
+            if (!baseOffset.isPresent() || baseOffset.get() == missingBaseOffset) {
+                continue;
+            }
+
+            if (file.getName().endsWith(SegmentUtils.getFileTypeSuffix(SegmentUtils.SegmentFileType.TIMEINDEX))) {
+                try (FileInputStream fis = new FileInputStream(file)) {
+                    TimeIndex segmentTimeIndex = TimeIndex.loadFromSegmentTimeIndex(fis, baseOffset.get());
+                    TimeIndex.TimeIndexEntry lastEntry = segmentTimeIndex.getLastEntry();
+                    if (lastEntry != null) {
+                        timeIndex.insertEntry(new TimeIndex.TimeIndexEntry(lastEntry.getTimestamp(), lastEntry.getRelativeOffset(), lastEntry.getBaseOffset()));
+                    }
+                } catch (IOException e) {
+                    throw new RuntimeException(String.format("Failed to read timeindex file %s", file.getAbsolutePath()), e);
+                }
+            }
+        }
+        TopicPartitionMetadata topicPartitionMetadata = new TopicPartitionMetadata(new TopicPartition(topic, partition));
+        topicPartitionMetadata.updateMetadata(TopicPartitionMetadata.TIMEINDEX_KEY, timeIndex);
+        s3Client.putObject(PutObjectRequest.builder().bucket(S3_BUCKET).key(getS3ObjectKey(cluster, topic, partition, TopicPartitionMetadata.FILENAME)).build(), RequestBody.fromString(topicPartitionMetadata.getAsJsonString()));
+        LOG.info(String.format("Put metadata file to bucket=%s, key=%s", S3_BUCKET, getS3ObjectKey(cluster, topic, partition, TopicPartitionMetadata.FILENAME)));
     }
 
     protected static String getS3ObjectKey(String topic, int partition, long offset, SegmentUtils.SegmentFileType fileType) {

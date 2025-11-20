@@ -14,6 +14,7 @@ import java.util.HashSet;
 import java.util.TreeMap;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 public class TestS3Utils extends TestS3Base {
 
@@ -70,5 +71,36 @@ public class TestS3Utils extends TestS3Base {
 
         map0 = S3Utils.getSortedOffsetKeyMap(getS3BasePrefixWithCluster(), new TopicPartition(KAFKA_TOPIC, 0), Utils.getZeroPaddedOffset(33L), null, metricsConfiguration);
         assertEquals(new HashSet<>(Collections.singletonList(20L)), map0.keySet());
+    }
+
+    @Test
+    void testGetSortedOffsetKeyMapMergedFiltersOffsetsNotInMetadata() {
+        int partition = 2;
+        putEmptyObjects(KAFKA_TOPIC, partition, 0L, 20L, 10L);
+        putMetadataFile(KAFKA_CLUSTER_ID, KAFKA_TOPIC, partition, 0L, 20L, 20L);
+
+        S3Utils.overrideS3Client(s3Client);
+        String metricsReporterClassName = NoOpMetricsReporter.class.getName();
+        MetricsConfiguration metricsConfiguration = new MetricsConfiguration(true, metricsReporterClassName, null, null);
+
+        TreeMap<Long, Triple<String, String, Long>> mapFromListing = S3Utils.getSortedOffsetKeyMap(
+                getS3BasePrefixWithCluster(),
+                new TopicPartition(KAFKA_TOPIC, partition),
+                Utils.getZeroPaddedOffset(0L),
+                null,
+                metricsConfiguration
+        );
+        assertEquals(new HashSet<>(Arrays.asList(0L, 10L, 20L)), mapFromListing.keySet());
+
+        TreeMap<Long, Triple<String, String, Long>> mergedMap = S3Utils.getSortedOffsetKeyMapMerged(
+                getS3BasePrefixWithCluster(),
+                new TopicPartition(KAFKA_TOPIC, partition),
+                Utils.getZeroPaddedOffset(0L),
+                null,
+                metricsConfiguration
+        );
+
+        assertEquals(new HashSet<>(Arrays.asList(0L, 20L)), mergedMap.keySet());
+        assertFalse(mergedMap.containsKey(10L));
     }
 }
