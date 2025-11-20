@@ -429,7 +429,7 @@ public class DirectoryTreeWatcher implements Runnable {
             return;
         }
 
-        if (Utils.isAssignableFromRecursive(throwable, NoSuchFileException.class)) {
+        if (com.pinterest.kafka.tieredstorage.common.Utils.isAssignableFromRecursive(throwable, NoSuchFileException.class)) {
             if (uploadTask.getTries() <= config.getUploadMaxRetries()) {
                 // retry with .deleted suffix
                 LOG.info("Retrying upload with .deleted suffix for " + uploadTask.absolutePath);

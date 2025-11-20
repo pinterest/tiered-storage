@@ -116,4 +116,14 @@ public class Utils {
             return SegmentUtils.SegmentFileType.TIMEINDEX;
         return null;
     }
+
+    public static boolean isAssignableFromRecursive(Throwable throwable, Class<?> toMatch) {
+        if (throwable == null) {
+            return false;
+        }
+        if (toMatch.isAssignableFrom(throwable.getClass())) {
+            return true;
+        }
+        return isAssignableFromRecursive(throwable.getCause(), toMatch);
+    }
 }

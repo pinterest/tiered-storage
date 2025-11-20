@@ -268,7 +268,7 @@ public class TestDirectoryTreeWatcher extends TestS3ContainerBase {
             public void onCompletion(DirectoryTreeWatcher.UploadTask uploadTask, long totalTimeMs, Throwable throwable, int statusCode) {
                 assertNotNull(throwable);
                 assertEquals(MultiThreadedS3FileUploader.UPLOAD_TIMEOUT_ERROR_CODE, statusCode);
-                assertTrue(Utils.isAssignableFromRecursive(throwable, CompletionException.class));
+                assertTrue(com.pinterest.kafka.tieredstorage.common.Utils.isAssignableFromRecursive(throwable, CompletionException.class));
                 directoryTreeWatcher.handleUploadCallback(uploadTask, totalTimeMs, throwable, statusCode);
             }
         };
@@ -346,7 +346,7 @@ public class TestDirectoryTreeWatcher extends TestS3ContainerBase {
             public void onCompletion(DirectoryTreeWatcher.UploadTask uploadTask, long totalTimeMs, Throwable throwable, int statusCode) {
                 assertNotNull(throwable);
                 assertEquals(MultiThreadedS3FileUploader.UPLOAD_TIMEOUT_ERROR_CODE, statusCode);
-                assertTrue(Utils.isAssignableFromRecursive(throwable, CompletionException.class));
+                assertTrue(com.pinterest.kafka.tieredstorage.common.Utils.isAssignableFromRecursive(throwable, CompletionException.class));
                 directoryTreeWatcher.handleUploadCallback(uploadTask, totalTimeMs, throwable, statusCode);
             }
         };
@@ -432,10 +432,10 @@ public class TestDirectoryTreeWatcher extends TestS3ContainerBase {
                 assertNotNull(throwable);
                 if (uploadTask == nonExistentUploadTask) {
                     assertEquals(MultiThreadedS3FileUploader.UPLOAD_FILE_NOT_FOUND_ERROR_CODE, statusCode);
-                    assertTrue(Utils.isAssignableFromRecursive(throwable, NoSuchFileException.class));
+                    assertTrue(com.pinterest.kafka.tieredstorage.common.Utils.isAssignableFromRecursive(throwable, NoSuchFileException.class));
                 } else {
                     assertEquals(MultiThreadedS3FileUploader.UPLOAD_TIMEOUT_ERROR_CODE, statusCode);
-                    assertTrue(Utils.isAssignableFromRecursive(throwable, CompletionException.class));
+                    assertTrue(com.pinterest.kafka.tieredstorage.common.Utils.isAssignableFromRecursive(throwable, CompletionException.class));
                 }
                 directoryTreeWatcher.handleUploadCallback(uploadTask, totalTimeMs, throwable, statusCode);
             }

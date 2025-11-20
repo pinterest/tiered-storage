@@ -1,11 +1,15 @@
 package com.pinterest.kafka.tieredstorage.consumer;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.pinterest.kafka.tieredstorage.common.Utils;
 import com.pinterest.kafka.tieredstorage.common.discovery.StorageServiceEndpointProvider;
 import com.pinterest.kafka.tieredstorage.common.discovery.s3.S3StorageServiceEndpoint;
 import com.pinterest.kafka.tieredstorage.common.discovery.s3.S3StorageServiceEndpointProvider;
 import com.pinterest.kafka.tieredstorage.common.metrics.MetricRegistryManager;
 import com.pinterest.kafka.tieredstorage.common.metrics.MetricsConfiguration;
+
+import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
+
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerGroupMetadata;
@@ -18,6 +22,7 @@ import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
 import org.apache.kafka.clients.consumer.OffsetCommitCallback;
 import org.apache.kafka.clients.consumer.OffsetOutOfRangeException;
+import org.apache.kafka.clients.consumer.OffsetResetStrategy;
 import org.apache.kafka.common.Metric;
 import org.apache.kafka.common.MetricName;
 import org.apache.kafka.common.PartitionInfo;
@@ -63,7 +68,7 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
     private String kafkaClusterId;
     protected KafkaConsumer<K, V> kafkaConsumer;
     protected S3Consumer<K, V> s3Consumer;
-    private OffsetReset offsetReset = OffsetReset.LATEST;
+    private OffsetResetStrategy offsetResetStrategy = OffsetResetStrategy.LATEST;
     private final Set<String> subscription = new HashSet<>();
     private int maxRecordsPerPoll = 50;
     private boolean autoCommitEnabled = true;
@@ -89,16 +94,14 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
         properties.setProperty(MetricsConfiguration.METRICS_REGISTRY_MANAGER_THREAD_LOCAL_CONFIG, "true");
         this.metricsConfiguration = MetricsConfiguration.getMetricsConfiguration(properties);
 
-        String offsetResetConfig = properties.getProperty(TieredStorageConsumerConfig.OFFSET_RESET_CONFIG, "latest").toLowerCase().trim();
-        this.offsetReset = offsetResetConfig.equals("earliest") ? OffsetReset.EARLIEST :
-                offsetResetConfig.equals("none") ? OffsetReset.NONE :
-                        OffsetReset.LATEST;
-        LOG.info("Offset reset policy: " + this.offsetReset);
+        String autoOffsetResetConfig = properties.getProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest").toUpperCase().trim();
+        this.offsetResetStrategy = OffsetResetStrategy.valueOf(autoOffsetResetConfig);
+        LOG.info("Offset reset strategy: " + this.offsetResetStrategy);
         this.consumerGroup = properties.getProperty(ConsumerConfig.GROUP_ID_CONFIG);
         if (tieredStorageConsumptionPossible()) {
             LOG.info("Tiered storage consumption is possible. Consumption mode: " + tieredStorageMode);
             this.kafkaClusterId = properties.getProperty(TieredStorageConsumerConfig.KAFKA_CLUSTER_ID_CONFIG);
-            properties.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "none");
+            properties.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "none");    // if we are consuming from tiered storage, make kafkaConsumer throw an exception if no offset is available
             this.s3PrefixEntropyNumBits = Integer.parseInt(properties.getProperty(
                     TieredStorageConsumerConfig.STORAGE_SERVICE_ENDPOINT_S3_PREFIX_ENTROPY_NUM_BITS_CONFIG, "-1"));
             if (properties.containsKey(ConsumerConfig.MAX_POLL_RECORDS_CONFIG))
@@ -115,7 +118,7 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
         }
         this.kafkaConsumer = new KafkaConsumer<>(properties, keyDeserializer, valueDeserializer);
         this.rebalanceListener = new AssignmentAwareConsumerRebalanceListener(
-                kafkaConsumer, consumerGroup, properties, positions, new HashMap<>(), offsetReset
+                kafkaConsumer, consumerGroup, properties, positions, new HashMap<>(), offsetResetStrategy
         );
         LOG.info("TieredStorageConsumer configs: " + properties);
     }
@@ -428,25 +431,30 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
         if (exception.getClass() != NoOffsetForPartitionException.class && exception.getClass() != OffsetOutOfRangeException.class) {
             throw exception;
         }
-        switch (offsetReset) {
-            case NONE:
-                LOG.info(String.format("%s: Going to throw.", offsetReset));
-                throw exception;
-            case LATEST:
-                LOG.info(String.format("%s: Going to reset offsets to latest.", offsetReset));
-                // ignore stored offsets and reset them to latest
-                KafkaConsumerUtils.resetOffsetToLatest(kafkaConsumer, exception.partitions());
-                break;
-            case EARLIEST:
-                // set s3 position to stored offsets and consume from s3
-                s3Consumer.assign(exception.partitions());
-                s3Consumer.setPositions(positions);
-                LOG.debug(String.format("%s: InvalidOffsetException on Kafka: Going to reset offsets to positions for S3 consumption: %s.",
-                        offsetReset, positions));
-                records.addRecords(s3Consumer.poll(maxRecordsPerPoll, exception.partitions()));
-                ts.set(true);
-                break;
+        s3Consumer.assign(exception.partitions());
+        s3Consumer.setPositions(positions);
+        ConsumerRecords<K, V> pollRecords = ConsumerRecords.empty();
+        try {
+            pollRecords = s3Consumer.poll(maxRecordsPerPoll, exception.partitions());
+        } catch (OffsetOutOfRangeException e) {
+            LOG.warn("Will reset offsets based on strategy: " + offsetResetStrategy + " for partitions: " + e.partitions());
+            switch (offsetResetStrategy) {
+                case LATEST:
+                    KafkaConsumerUtils.resetOffsetToLatest(kafkaConsumer, e.partitions());
+                    break;
+                case NONE:
+                    throw new OffsetOutOfRangeException("No offset found for partitions at positions", positions);
+                case EARLIEST:
+                    this.seekToBeginning(e.partitions());
+                    break;
+            }
+
+        } catch (Exception e) {
+            LOG.error("Error polling from S3", e);
+            throw e;
         }
+        records.addRecords(pollRecords);
+        ts.set(true);
     }
 
     /**
@@ -914,10 +922,6 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
     @Override
     public List<PartitionInfo> partitionsFor(String topic, Duration timeout) {
         return this.kafkaConsumer.partitionsFor(topic, timeout);
-    }
-
-    public enum OffsetReset {
-        EARLIEST, LATEST, NONE
     }
 
     public enum TieredStorageMode {
