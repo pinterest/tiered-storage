@@ -1225,8 +1225,8 @@ public class TestTieredStorageConsumerIntegration extends TestS3Base {
         props.setProperty(ConsumerConfig.GROUP_ID_CONFIG, groupId);
         tsConsumer = new TieredStorageConsumer<>(props);
         tsConsumer.assign(new HashSet<>(Arrays.asList(tpReset, tpOther)));
-
-        ConsumerRecords<String, String> firstPoll = tsConsumer.poll(Duration.ofMillis(500));
+        assertEquals(initialRecords + 20, tsConsumer.position(tpReset));
+        assertEquals(0, tsConsumer.position(tpOther));
 
         List<ConsumerRecord<String, String>> collected = new ArrayList<>();
         long deadline = System.currentTimeMillis() + 5000;
@@ -1282,14 +1282,14 @@ public class TestTieredStorageConsumerIntegration extends TestS3Base {
         String groupId = "poll-reset-none-kafka-only-" + System.currentTimeMillis();
         TopicPartition tpReset = new TopicPartition(TEST_TOPIC_A, 0);
 
-        sendTestData(TEST_TOPIC_A, tpReset.partition(), 5);
-        commitOffset(groupId, tpReset, 100);
+        sendTestData(TEST_TOPIC_A, tpReset.partition(), 100);
 
         Properties props = getStandardTieredStorageConsumerProperties(TieredStorageConsumer.TieredStorageMode.KAFKA_ONLY, sharedKafkaTestResource.getKafkaConnectString());
         props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, OffsetResetStrategy.NONE.toString());
         props.setProperty(ConsumerConfig.GROUP_ID_CONFIG, groupId);
         tsConsumer = new TieredStorageConsumer<>(props);
         tsConsumer.assign(Collections.singleton(tpReset));
+        tsConsumer.seek(tpReset, 105);
 
         assertThrows(OffsetOutOfRangeException.class, () -> tsConsumer.poll(Duration.ofMillis(500)));
 
