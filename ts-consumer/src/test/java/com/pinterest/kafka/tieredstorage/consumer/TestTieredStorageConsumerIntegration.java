@@ -1547,7 +1547,6 @@ public class TestTieredStorageConsumerIntegration extends TestS3Base {
         properties.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, OffsetResetStrategy.EARLIEST.toString());
         properties.setProperty(TieredStorageConsumerConfig.TIERED_STORAGE_MODE_CONFIG, mode.toString());
         properties.setProperty(TieredStorageConsumerConfig.KAFKA_CLUSTER_ID_CONFIG, TEST_CLUSTER);
-        properties.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, OffsetResetStrategy.LATEST.toString());
         properties.setProperty(TieredStorageConsumerConfig.STORAGE_SERVICE_ENDPOINT_PROVIDER_CLASS_CONFIG, MockS3StorageServiceEndpointProvider.class.getName());
         properties.setProperty(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
         return properties;
