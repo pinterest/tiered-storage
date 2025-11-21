@@ -1225,6 +1225,7 @@ public class TestTieredStorageConsumerIntegration extends TestS3Base {
         props.setProperty(ConsumerConfig.GROUP_ID_CONFIG, groupId);
         tsConsumer = new TieredStorageConsumer<>(props);
         tsConsumer.assign(new HashSet<>(Arrays.asList(tpReset, tpOther)));
+        tsConsumer.seek(tpReset, initialRecords + 20);
         assertEquals(initialRecords + 20, tsConsumer.position(tpReset));
         assertEquals(0, tsConsumer.position(tpOther));
 
