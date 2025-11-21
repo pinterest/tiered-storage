@@ -890,6 +890,16 @@ public class TestTieredStorageConsumerIntegration extends TestS3Base {
         tsConsumer.close();
     }
 
+    /**
+     * Test the offset reset position scenarios for the given mode.
+     * @param mode
+     * @throws IOException
+     * @throws ClassNotFoundException
+     * @throws InvocationTargetException
+     * @throws NoSuchMethodException
+     * @throws InstantiationException
+     * @throws IllegalAccessException
+     */
     @ParameterizedTest
     @EnumSource(TieredStorageConsumer.TieredStorageMode.class)
     void testOffsetResetPositionScenarios(TieredStorageConsumer.TieredStorageMode mode) throws IOException, ClassNotFoundException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
@@ -918,6 +928,10 @@ public class TestTieredStorageConsumerIntegration extends TestS3Base {
         tsConsumer.close();
     }
 
+    /**
+     * Test retrieving offsets for timestamp in KAFKA_PREFERRED mode.
+     * @throws Exception
+     */
     @Test
     void testOffsetsForTimesKafkaPreferred() throws Exception {
         Properties props = getStandardTieredStorageConsumerProperties(
@@ -983,6 +997,11 @@ public class TestTieredStorageConsumerIntegration extends TestS3Base {
         tsConsumer.close();
     }
 
+    /**
+     * Test retrieving offsets for multiple partitions in KAFKA_PREFERRED mode.
+     * @param mode
+     * @throws Exception
+     */
     @ParameterizedTest
     @EnumSource(TieredStorageConsumer.TieredStorageMode.class)
     void testOffsetsForTimesMultiPartition(TieredStorageConsumer.TieredStorageMode mode) throws Exception {
@@ -1028,6 +1047,11 @@ public class TestTieredStorageConsumerIntegration extends TestS3Base {
         closeS3Mocks();
     }
 
+    /**
+     * Test retrieving offsets for multiple partitions in KAFKA_PREFERRED mode with mocked Kafka offsets.
+     * @param mode
+     * @throws Exception
+     */
     @ParameterizedTest
     @EnumSource(TieredStorageConsumer.TieredStorageMode.class)
     void testOffsetsForTimesMultiPartitionWithMockedKafkaOffsets(TieredStorageConsumer.TieredStorageMode mode) throws Exception {
@@ -1062,6 +1086,10 @@ public class TestTieredStorageConsumerIntegration extends TestS3Base {
         tsConsumer.close();
     }
 
+    /**
+     * Test that KAFKA_PREFERRED mode + auto.offset.reset=earliest will reset to earliest offsets on S3 if KafkaConsumer throws an OffsetOutOfRangeException.
+     * @throws Exception
+     */
     @Test
     void testPollOffsetResetEarliestKafkaPreferredPrefersS3Offsets() throws Exception {
         Properties props = getStandardTieredStorageConsumerProperties(TieredStorageConsumer.TieredStorageMode.KAFKA_PREFERRED, sharedKafkaTestResource.getKafkaConnectString());
@@ -1110,6 +1138,10 @@ public class TestTieredStorageConsumerIntegration extends TestS3Base {
         tsConsumer.close();
     }
 
+    /**
+     * Test that KAFKA_PREFERRED mode + auto.offset.reset=latest will reset to latest offsets on Kafka if KafkaConsumer throws an OffsetOutOfRangeException.
+     * @throws Exception
+     */
     @Test
     void testPollOffsetResetLatestKafkaPreferredResetsToKafka() throws Exception {
         Properties props = getStandardTieredStorageConsumerProperties(TieredStorageConsumer.TieredStorageMode.KAFKA_PREFERRED, sharedKafkaTestResource.getKafkaConnectString());
@@ -1156,6 +1188,10 @@ public class TestTieredStorageConsumerIntegration extends TestS3Base {
         tsConsumer.close();
     }
 
+    /**
+     * Test that KAFKA_PREFERRED mode + auto.offset.reset=none will throw an OffsetOutOfRangeException if both KafkaConsumer and S3Consumer throw an OffsetOutOfRangeException.
+     * @throws Exception
+     */
     @Test
     void testPollOffsetResetNoneKafkaPreferredThrows() throws Exception {
         Properties props = getStandardTieredStorageConsumerProperties(TieredStorageConsumer.TieredStorageMode.KAFKA_PREFERRED, sharedKafkaTestResource.getKafkaConnectString());
@@ -1208,6 +1244,10 @@ public class TestTieredStorageConsumerIntegration extends TestS3Base {
         }
     }
 
+    /**
+     * Test that KAFKA_ONLY mode + auto.offset.reset=earliest will reset to earliest offsets on Kafka if KafkaConsumer throws an OffsetOutOfRangeException.
+     * @throws Exception
+     */
     @Test
     void testPollOffsetResetEarliestKafkaOnlyResetsToBeginning() throws Exception {
         String groupId = "poll-reset-earliest-kafka-only-" + System.currentTimeMillis();
@@ -1243,6 +1283,10 @@ public class TestTieredStorageConsumerIntegration extends TestS3Base {
         tsConsumer.close();
     }
 
+    /**
+     * Test that KAFKA_ONLY mode + auto.offset.reset=latest will reset to latest offsets on Kafka if KafkaConsumer throws an OffsetOutOfRangeException.
+     * @throws Exception
+     */
     @Test
     void testPollOffsetResetLatestKafkaOnlyResetsToLatest() throws Exception {
         String groupId = "poll-reset-latest-kafka-only-" + System.currentTimeMillis();
@@ -1278,6 +1322,10 @@ public class TestTieredStorageConsumerIntegration extends TestS3Base {
         tsConsumer.close();
     }
 
+    /**
+     * Test that KAFKA_ONLY mode + auto.offset.reset=none will throw an OffsetOutOfRangeException if KafkaConsumer throws an OffsetOutOfRangeException.
+     * @throws Exception
+     */
     @Test
     void testPollOffsetResetNoneKafkaOnlyThrows() throws Exception {
         String groupId = "poll-reset-none-kafka-only-" + System.currentTimeMillis();

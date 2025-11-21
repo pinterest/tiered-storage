@@ -1,14 +1,11 @@
 package com.pinterest.kafka.tieredstorage.consumer;
 
 import com.google.common.annotations.VisibleForTesting;
-import com.pinterest.kafka.tieredstorage.common.Utils;
 import com.pinterest.kafka.tieredstorage.common.discovery.StorageServiceEndpointProvider;
 import com.pinterest.kafka.tieredstorage.common.discovery.s3.S3StorageServiceEndpoint;
 import com.pinterest.kafka.tieredstorage.common.discovery.s3.S3StorageServiceEndpointProvider;
 import com.pinterest.kafka.tieredstorage.common.metrics.MetricRegistryManager;
 import com.pinterest.kafka.tieredstorage.common.metrics.MetricsConfiguration;
-
-import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
