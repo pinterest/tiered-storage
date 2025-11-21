@@ -1,9 +1,14 @@
 package com.pinterest.kafka.tieredstorage.consumer;
 
+import com.pinterest.kafka.tieredstorage.common.Utils;
 import com.pinterest.kafka.tieredstorage.common.metrics.MetricsConfiguration;
+
+import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
+
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
+import org.apache.kafka.clients.consumer.OffsetOutOfRangeException;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.annotation.InterfaceStability;
 import org.apache.kafka.common.serialization.Deserializer;
@@ -14,6 +19,7 @@ import java.io.IOException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -98,6 +104,7 @@ public class S3PartitionsConsumer<K, V> {
                     partitions, s3PartitionConsumerMap.keySet()));
             return tieredStorageRecords.records();
         }
+        Map<TopicPartition, Long> outOfRangePartitions = new HashMap<>();
         while (round < partitions.size()) {
             LOG.debug(String.format("Current stored positions: %s", positions));
             TopicPartition topicPartition = topicPartitions.get(nextPartitionIndex(partitions));
@@ -114,11 +121,22 @@ public class S3PartitionsConsumer<K, V> {
             LOG.debug(String.format("(int) Math.ceil(%s - %s) / (%s - %s) = %s",
                     maxRecords, consumedSoFar, partitions.size(), round, toPartiallyConsume));
             s3PartitionConsumerMap.get(topicPartition).setPosition(positions.get(topicPartition));
-            List<ConsumerRecord<K, V>> records =
-                    s3PartitionConsumerMap.get(topicPartition).poll(toPartiallyConsume, false);
+            List<ConsumerRecord<K, V>> records = Collections.emptyList();
+            try {
+                records = s3PartitionConsumerMap.get(topicPartition).poll(toPartiallyConsume, false);
+            } catch (Exception e) {
+                if (Utils.isAssignableFromRecursive(e, NoSuchKeyException.class)) {
+                    outOfRangePartitions.put(topicPartition, s3PartitionConsumerMap.get(topicPartition).getPosition());
+                } else {
+                    throw e;
+                }
+            }
             consumedSoFar += records.size();
             ++round;
             tieredStorageRecords.addRecords(topicPartition, records);
+        }
+        if (!outOfRangePartitions.isEmpty()) {
+            throw new OffsetOutOfRangeException("Offset out of range", outOfRangePartitions);
         }
         if (tieredStorageRecords.records().count() > 0) {
             s3PartitionConsumerMap.forEach((tp, c) -> {

@@ -83,7 +83,7 @@ public class MultiThreadedS3FileUploader implements S3FileUploader {
                 long timeSpentMs = System.currentTimeMillis() - queueTime;
                 LOG.warn(String.format("Caught exception during putObject for %s --> %s in %dms", uploadTask.getAbsolutePath(), uploadPathString, timeSpentMs), e);
                 int errorCode = UPLOAD_GENERAL_ERROR_CODE;
-                if (Utils.isAssignableFromRecursive(e, NoSuchFileException.class)) {
+                if (com.pinterest.kafka.tieredstorage.common.Utils.isAssignableFromRecursive(e, NoSuchFileException.class)) {
                     errorCode = UPLOAD_FILE_NOT_FOUND_ERROR_CODE;
                 }
                 s3UploadCallback.onCompletion(uploadTask, timeSpentMs, e, errorCode);

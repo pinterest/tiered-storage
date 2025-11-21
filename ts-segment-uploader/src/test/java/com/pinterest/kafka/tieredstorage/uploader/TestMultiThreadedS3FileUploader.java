@@ -139,7 +139,7 @@ public class TestMultiThreadedS3FileUploader extends TestS3ContainerBase {
             @Override
             public void onCompletion(DirectoryTreeWatcher.UploadTask uploadTask, long totalTimeMs, Throwable throwable, int statusCode) {
                 assertNotNull(throwable);
-                assertTrue(Utils.isAssignableFromRecursive(throwable, NoSuchFileException.class));
+                assertTrue(com.pinterest.kafka.tieredstorage.common.Utils.isAssignableFromRecursive(throwable, NoSuchFileException.class));
             }
         });
     }
@@ -166,7 +166,7 @@ public class TestMultiThreadedS3FileUploader extends TestS3ContainerBase {
         s3FileUploader.uploadFile(uploadTask, new S3UploadCallback() {
             @Override
             public void onCompletion(DirectoryTreeWatcher.UploadTask uploadTask, long totalTimeMs, Throwable throwable, int statusCode) {
-                assertTrue(Utils.isAssignableFromRecursive(throwable, ApiCallTimeoutException.class));
+                assertTrue(com.pinterest.kafka.tieredstorage.common.Utils.isAssignableFromRecursive(throwable, ApiCallTimeoutException.class));
                 assertEquals(statusCode, MultiThreadedS3FileUploader.UPLOAD_TIMEOUT_ERROR_CODE);
             }
         });

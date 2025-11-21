@@ -80,15 +80,5 @@ public class Utils {
         channel.close();
         file.close();
     }
-
-    public static boolean isAssignableFromRecursive(Throwable throwable, Class<?> toMatch) {
-        if (throwable == null) {
-            return false;
-        }
-        if (toMatch.isAssignableFrom(throwable.getClass())) {
-            return true;
-        }
-        return isAssignableFromRecursive(throwable.getCause(), toMatch);
-    }
 }
 

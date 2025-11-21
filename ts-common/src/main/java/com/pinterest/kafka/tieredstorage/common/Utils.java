@@ -116,4 +116,20 @@ public class Utils {
             return SegmentUtils.SegmentFileType.TIMEINDEX;
         return null;
     }
+
+    /**
+     * Check if a Throwable is assignable from a given class.
+     * @param throwable
+     * @param toMatch the class to check if the Throwable is assignable from
+     * @return
+     */
+    public static boolean isAssignableFromRecursive(Throwable throwable, Class<?> toMatch) {
+        if (throwable == null) {
+            return false;
+        }
+        if (toMatch.isAssignableFrom(throwable.getClass())) {
+            return true;
+        }
+        return isAssignableFromRecursive(throwable.getCause(), toMatch);
+    }
 }
