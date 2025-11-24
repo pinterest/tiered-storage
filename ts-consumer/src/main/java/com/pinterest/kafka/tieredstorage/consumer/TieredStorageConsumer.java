@@ -91,14 +91,14 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
         properties.setProperty(MetricsConfiguration.METRICS_REGISTRY_MANAGER_THREAD_LOCAL_CONFIG, "true");
         this.metricsConfiguration = MetricsConfiguration.getMetricsConfiguration(properties);
 
-        String autoOffsetResetConfig = properties.getProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest").toUpperCase().trim();
+        String autoOffsetResetConfig = properties.getProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, OffsetResetStrategy.LATEST.toString()).toUpperCase().trim();
         this.offsetResetStrategy = OffsetResetStrategy.valueOf(autoOffsetResetConfig);
         LOG.info("Offset reset strategy: " + this.offsetResetStrategy);
         this.consumerGroup = properties.getProperty(ConsumerConfig.GROUP_ID_CONFIG);
         if (tieredStorageConsumptionPossible()) {
             LOG.info("Tiered storage consumption is possible. Consumption mode: " + tieredStorageMode);
             this.kafkaClusterId = properties.getProperty(TieredStorageConsumerConfig.KAFKA_CLUSTER_ID_CONFIG);
-            properties.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "none");    // if we are consuming from tiered storage, make kafkaConsumer throw an exception if no offset is available
+            properties.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, OffsetResetStrategy.NONE.toString());    // if we are consuming from tiered storage, make kafkaConsumer throw an exception if no offset is available
             this.s3PrefixEntropyNumBits = Integer.parseInt(properties.getProperty(
                     TieredStorageConsumerConfig.STORAGE_SERVICE_ENDPOINT_S3_PREFIX_ENTROPY_NUM_BITS_CONFIG, "-1"));
             if (properties.containsKey(ConsumerConfig.MAX_POLL_RECORDS_CONFIG))
