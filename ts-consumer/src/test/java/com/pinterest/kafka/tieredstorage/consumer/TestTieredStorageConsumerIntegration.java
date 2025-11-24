@@ -2,6 +2,7 @@ package com.pinterest.kafka.tieredstorage.consumer;
 
 import com.pinterest.kafka.tieredstorage.common.CommonTestUtils;
 import com.pinterest.kafka.tieredstorage.common.discovery.s3.MockS3StorageServiceEndpointProvider;
+import com.pinterest.kafka.tieredstorage.common.metadata.TimeIndex;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -9,6 +10,7 @@ import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.consumer.NoOffsetForPartitionException;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
+import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
 import org.apache.kafka.clients.consumer.OffsetOutOfRangeException;
 import org.apache.kafka.clients.consumer.OffsetResetStrategy;
 import org.apache.kafka.common.TopicPartition;
@@ -41,8 +43,6 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
-import com.pinterest.kafka.tieredstorage.common.metadata.TimeIndex;
-import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
 
 import static com.pinterest.kafka.tieredstorage.common.CommonTestUtils.writeExpectedRecordFormatTestData;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -890,97 +890,48 @@ public class TestTieredStorageConsumerIntegration extends TestS3Base {
         tsConsumer.close();
     }
 
+    /**
+     * Test the offset reset position scenarios for the given mode.
+     * @param mode
+     * @throws IOException
+     * @throws ClassNotFoundException
+     * @throws InvocationTargetException
+     * @throws NoSuchMethodException
+     * @throws InstantiationException
+     * @throws IllegalAccessException
+     */
     @ParameterizedTest
     @EnumSource(TieredStorageConsumer.TieredStorageMode.class)
     void testOffsetResetPositionScenarios(TieredStorageConsumer.TieredStorageMode mode) throws IOException, ClassNotFoundException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
         Properties props = getStandardTieredStorageConsumerProperties(mode, sharedKafkaTestResource.getKafkaConnectString());
         sendTestData(TEST_TOPIC_A, 0, 100);
 
-        // test none for both Kafka and TS config
+        // test none
         props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "none");
-        props.setProperty(TieredStorageConsumerConfig.OFFSET_RESET_CONFIG, TieredStorageConsumer.OffsetReset.NONE.name());
         tsConsumer = new TieredStorageConsumer<>(props);
         tsConsumer.assign(Collections.singleton(new TopicPartition(TEST_TOPIC_A, 0)));
         assertThrows(NoOffsetForPartitionException.class, () -> tsConsumer.position(new TopicPartition(TEST_TOPIC_A, 0)));
         tsConsumer.close();
 
-        // test none for Kafka and earliest for TS config
-        props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "none");
-        props.setProperty(TieredStorageConsumerConfig.OFFSET_RESET_CONFIG, TieredStorageConsumer.OffsetReset.EARLIEST.name());
-        tsConsumer = new TieredStorageConsumer<>(props);
-        tsConsumer.assign(Collections.singleton(new TopicPartition(TEST_TOPIC_A, 0)));
-        if (mode == TieredStorageConsumer.TieredStorageMode.KAFKA_ONLY) {
-            assertThrows(NoOffsetForPartitionException.class, () -> tsConsumer.position(new TopicPartition(TEST_TOPIC_A, 0)));
-        } else {
-            assertEquals(0L, tsConsumer.position(new TopicPartition(TEST_TOPIC_A, 0)));
-        }
-        tsConsumer.close();
-
-        // test earliest for both Kafka and TS config
+        // test earliest
         props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
-        props.setProperty(TieredStorageConsumerConfig.OFFSET_RESET_CONFIG, TieredStorageConsumer.OffsetReset.EARLIEST.name());
         tsConsumer = new TieredStorageConsumer<>(props);
         tsConsumer.assign(Collections.singleton(new TopicPartition(TEST_TOPIC_A, 0)));
         assertEquals(0L, tsConsumer.position(new TopicPartition(TEST_TOPIC_A, 0)));
         tsConsumer.close();
 
-        // test earliest for Kafka and none for TS config
-        props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
-        props.setProperty(TieredStorageConsumerConfig.OFFSET_RESET_CONFIG, TieredStorageConsumer.OffsetReset.NONE.name());
-        tsConsumer = new TieredStorageConsumer<>(props);
-        tsConsumer.assign(Collections.singleton(new TopicPartition(TEST_TOPIC_A, 0)));
-        if (mode == TieredStorageConsumer.TieredStorageMode.KAFKA_ONLY) {
-            assertEquals(0L, tsConsumer.position(new TopicPartition(TEST_TOPIC_A, 0)));
-        } else {
-            assertThrows(NoOffsetForPartitionException.class, () -> tsConsumer.position(new TopicPartition(TEST_TOPIC_A, 0)));
-        }
-        tsConsumer.close();
-
-        // test latest for both Kafka and TS config
+        // test latest
         props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest");
-        props.setProperty(TieredStorageConsumerConfig.OFFSET_RESET_CONFIG, TieredStorageConsumer.OffsetReset.LATEST.name());
         tsConsumer = new TieredStorageConsumer<>(props);
         tsConsumer.assign(Collections.singleton(new TopicPartition(TEST_TOPIC_A, 0)));
         assertEquals(100L, tsConsumer.position(new TopicPartition(TEST_TOPIC_A, 0)));
         tsConsumer.close();
-
-        // test latest for Kafka and earliest for TS config
-        props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest");
-        props.setProperty(TieredStorageConsumerConfig.OFFSET_RESET_CONFIG, TieredStorageConsumer.OffsetReset.EARLIEST.name());
-        tsConsumer = new TieredStorageConsumer<>(props);
-        tsConsumer.assign(Collections.singleton(new TopicPartition(TEST_TOPIC_A, 0)));
-        if (mode == TieredStorageConsumer.TieredStorageMode.KAFKA_ONLY) {
-            assertEquals(100L, tsConsumer.position(new TopicPartition(TEST_TOPIC_A, 0)));
-        } else {
-            assertEquals(0L, tsConsumer.position(new TopicPartition(TEST_TOPIC_A, 0)));
-        }
-        tsConsumer.close();
-
-        // test latest for Kafka and none for TS config
-        props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest");
-        props.setProperty(TieredStorageConsumerConfig.OFFSET_RESET_CONFIG, TieredStorageConsumer.OffsetReset.NONE.name());
-        tsConsumer = new TieredStorageConsumer<>(props);
-        tsConsumer.assign(Collections.singleton(new TopicPartition(TEST_TOPIC_A, 0)));
-        if (mode == TieredStorageConsumer.TieredStorageMode.KAFKA_ONLY) {
-            assertEquals(100L, tsConsumer.position(new TopicPartition(TEST_TOPIC_A, 0)));
-        } else {
-            assertThrows(NoOffsetForPartitionException.class, () -> tsConsumer.position(new TopicPartition(TEST_TOPIC_A, 0)));
-        }
-        tsConsumer.close();
-
-        // test earliest for Kafka and latest for TS config
-        props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
-        props.setProperty(TieredStorageConsumerConfig.OFFSET_RESET_CONFIG, TieredStorageConsumer.OffsetReset.LATEST.name());
-        tsConsumer = new TieredStorageConsumer<>(props);
-        tsConsumer.assign(Collections.singleton(new TopicPartition(TEST_TOPIC_A, 0)));
-        if (mode == TieredStorageConsumer.TieredStorageMode.KAFKA_ONLY) {
-            assertEquals(0L, tsConsumer.position(new TopicPartition(TEST_TOPIC_A, 0)));
-        } else {
-            assertEquals(100L, tsConsumer.position(new TopicPartition(TEST_TOPIC_A, 0)));
-        }
-        tsConsumer.close();
     }
 
+    /**
+     * Test retrieving offsets for timestamp in KAFKA_PREFERRED mode.
+     * @throws Exception
+     */
     @Test
     void testOffsetsForTimesKafkaPreferred() throws Exception {
         Properties props = getStandardTieredStorageConsumerProperties(
@@ -1046,6 +997,11 @@ public class TestTieredStorageConsumerIntegration extends TestS3Base {
         tsConsumer.close();
     }
 
+    /**
+     * Test retrieving offsets for multiple partitions in KAFKA_PREFERRED mode.
+     * @param mode
+     * @throws Exception
+     */
     @ParameterizedTest
     @EnumSource(TieredStorageConsumer.TieredStorageMode.class)
     void testOffsetsForTimesMultiPartition(TieredStorageConsumer.TieredStorageMode mode) throws Exception {
@@ -1091,6 +1047,11 @@ public class TestTieredStorageConsumerIntegration extends TestS3Base {
         closeS3Mocks();
     }
 
+    /**
+     * Test retrieving offsets for multiple partitions in KAFKA_PREFERRED mode with mocked Kafka offsets.
+     * @param mode
+     * @throws Exception
+     */
     @ParameterizedTest
     @EnumSource(TieredStorageConsumer.TieredStorageMode.class)
     void testOffsetsForTimesMultiPartitionWithMockedKafkaOffsets(TieredStorageConsumer.TieredStorageMode mode) throws Exception {
@@ -1121,6 +1082,265 @@ public class TestTieredStorageConsumerIntegration extends TestS3Base {
 
         Map<TopicPartition, OffsetAndTimestamp> results = tsConsumer.offsetsForTimes(timestamps, Duration.ofSeconds(5));
         assertEquals(kafkaOffsets, results);
+
+        tsConsumer.close();
+    }
+
+    /**
+     * Test that KAFKA_PREFERRED mode + auto.offset.reset=earliest will reset to earliest offsets on S3 if KafkaConsumer throws an OffsetOutOfRangeException.
+     * @throws Exception
+     */
+    @Test
+    void testPollOffsetResetEarliestKafkaPreferredPrefersS3Offsets() throws Exception {
+        Properties props = getStandardTieredStorageConsumerProperties(TieredStorageConsumer.TieredStorageMode.KAFKA_PREFERRED, sharedKafkaTestResource.getKafkaConnectString());
+        props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, OffsetResetStrategy.EARLIEST.toString());
+        tsConsumer = new TieredStorageConsumer<>(props);
+
+        TopicPartition tpReset = new TopicPartition(TEST_TOPIC_A, 0);
+        TopicPartition tpOther = new TopicPartition(TEST_TOPIC_A, 1);
+
+        KafkaConsumer<String, String> mockKafka = Mockito.mock(KafkaConsumer.class);
+        Map<TopicPartition, Long> kafkaOffsets = Collections.singletonMap(tpReset, 100L);
+        when(mockKafka.assignment()).thenReturn(new HashSet<>(Arrays.asList(tpReset, tpOther)));
+        when(mockKafka.beginningOffsets(Mockito.<Collection<TopicPartition>>any(), Mockito.any(Duration.class))).thenReturn(kafkaOffsets);
+        when(mockKafka.beginningOffsets(Mockito.<Collection<TopicPartition>>any())).thenReturn(kafkaOffsets);
+        tsConsumer.setKafkaConsumer(mockKafka);
+
+        @SuppressWarnings("unchecked")
+        S3Consumer<String, String> mockS3 = Mockito.mock(S3Consumer.class);
+        Map<TopicPartition, Long> s3Offsets = Collections.singletonMap(tpReset, 10L);
+        when(mockS3.beginningOffsets(Mockito.<Collection<TopicPartition>>any())).thenReturn(s3Offsets);
+        when(mockS3.poll(Mockito.anyInt(), Mockito.<Collection<TopicPartition>>any())).thenThrow(new OffsetOutOfRangeException(Collections.singletonMap(tpReset, 999L)));
+        tsConsumer.s3Consumer = mockS3;
+
+        ConsumerRecord<String, String> resetRecord = new ConsumerRecord<>(TEST_TOPIC_A, 0, 10L, "k", "v");
+        Map<TopicPartition, List<ConsumerRecord<String, String>>> secondPollData = new HashMap<>();
+        secondPollData.put(tpReset, Collections.singletonList(resetRecord));
+        when(mockKafka.poll(Mockito.any(Duration.class)))
+                .thenThrow(new OffsetOutOfRangeException(Collections.singletonMap(tpReset, 999L)))
+                .thenReturn(new ConsumerRecords<>(secondPollData));
+
+        tsConsumer.getPositions().put(tpReset, 999L);
+        tsConsumer.getPositions().put(tpOther, 321L);
+
+        ConsumerRecords<String, String> firstPoll = tsConsumer.poll(Duration.ofMillis(100));
+        assertEquals(0, firstPoll.count(), "First poll should be empty after reset");
+
+        assertEquals(10L, tsConsumer.getPositions().get(tpReset));
+        assertEquals(321L, tsConsumer.getPositions().get(tpOther));
+
+        ConsumerRecords<String, String> secondPoll = tsConsumer.poll(Duration.ofMillis(100));
+        assertEquals(1, secondPoll.count());
+        assertEquals(resetRecord, secondPoll.records(tpReset).get(0));
+        assertEquals(11L, tsConsumer.getPositions().get(tpReset));
+        assertEquals(321L, tsConsumer.getPositions().get(tpOther));
+
+        tsConsumer.close();
+    }
+
+    /**
+     * Test that KAFKA_PREFERRED mode + auto.offset.reset=latest will reset to latest offsets on Kafka if KafkaConsumer throws an OffsetOutOfRangeException.
+     * @throws Exception
+     */
+    @Test
+    void testPollOffsetResetLatestKafkaPreferredResetsToKafka() throws Exception {
+        Properties props = getStandardTieredStorageConsumerProperties(TieredStorageConsumer.TieredStorageMode.KAFKA_PREFERRED, sharedKafkaTestResource.getKafkaConnectString());
+        props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, OffsetResetStrategy.LATEST.toString());
+        tsConsumer = new TieredStorageConsumer<>(props);
+
+        TopicPartition tpReset = new TopicPartition(TEST_TOPIC_A, 0);
+        TopicPartition tpOther = new TopicPartition(TEST_TOPIC_A, 1);
+
+        KafkaConsumer<String, String> mockKafka = Mockito.mock(KafkaConsumer.class);
+        when(mockKafka.assignment()).thenReturn(new HashSet<>(Arrays.asList(tpReset, tpOther)));
+        tsConsumer.setKafkaConsumer(mockKafka);
+
+        @SuppressWarnings("unchecked")
+        S3Consumer<String, String> mockS3 = Mockito.mock(S3Consumer.class);
+        when(mockS3.poll(Mockito.anyInt(), Mockito.<Collection<TopicPartition>>any()))
+                .thenThrow(new OffsetOutOfRangeException(Collections.singletonMap(tpReset, 999L)));
+        tsConsumer.s3Consumer = mockS3;
+
+        ConsumerRecord<String, String> latestRecord = new ConsumerRecord<>(TEST_TOPIC_A, 0, 500L, "k", "v");
+        Map<TopicPartition, List<ConsumerRecord<String, String>>> secondPollData = new HashMap<>();
+        secondPollData.put(tpReset, Collections.singletonList(latestRecord));
+        when(mockKafka.poll(Mockito.any(Duration.class)))
+                .thenThrow(new OffsetOutOfRangeException(Collections.singletonMap(tpReset, 999L)))
+                .thenReturn(new ConsumerRecords<>(secondPollData));
+        Mockito.doNothing().when(mockKafka).seekToEnd(Mockito.<Collection<TopicPartition>>any());
+
+        tsConsumer.getPositions().put(tpReset, 999L);
+        tsConsumer.getPositions().put(tpOther, 321L);
+
+        ConsumerRecords<String, String> firstPoll = tsConsumer.poll(Duration.ofMillis(100));
+        assertEquals(0, firstPoll.count(), "First poll should be empty after reset");
+
+        Mockito.verify(mockKafka).seekToEnd(Mockito.<Collection<TopicPartition>>any());
+        assertEquals(999L, tsConsumer.getPositions().get(tpReset));
+        assertEquals(321L, tsConsumer.getPositions().get(tpOther));
+
+        ConsumerRecords<String, String> secondPoll = tsConsumer.poll(Duration.ofMillis(100));
+        assertEquals(1, secondPoll.count());
+        assertEquals(latestRecord, secondPoll.records(tpReset).get(0));
+        assertEquals(501L, tsConsumer.getPositions().get(tpReset));
+        assertEquals(321L, tsConsumer.getPositions().get(tpOther));
+
+        tsConsumer.close();
+    }
+
+    /**
+     * Test that KAFKA_PREFERRED mode + auto.offset.reset=none will throw an OffsetOutOfRangeException if both KafkaConsumer and S3Consumer throw an OffsetOutOfRangeException.
+     * @throws Exception
+     */
+    @Test
+    void testPollOffsetResetNoneKafkaPreferredThrows() throws Exception {
+        Properties props = getStandardTieredStorageConsumerProperties(TieredStorageConsumer.TieredStorageMode.KAFKA_PREFERRED, sharedKafkaTestResource.getKafkaConnectString());
+        props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, OffsetResetStrategy.NONE.toString());
+        tsConsumer = new TieredStorageConsumer<>(props);
+
+        TopicPartition tpReset = new TopicPartition(TEST_TOPIC_A, 0);
+        TopicPartition tpOther = new TopicPartition(TEST_TOPIC_A, 1);
+
+        KafkaConsumer<String, String> mockKafka = Mockito.mock(KafkaConsumer.class);
+        when(mockKafka.assignment()).thenReturn(new HashSet<>(Arrays.asList(tpReset, tpOther)));
+        when(mockKafka.poll(Mockito.any(Duration.class)))
+                .thenThrow(new OffsetOutOfRangeException(Collections.singletonMap(tpReset, 999L)));
+        tsConsumer.setKafkaConsumer(mockKafka);
+
+        @SuppressWarnings("unchecked")
+        S3Consumer<String, String> mockS3 = Mockito.mock(S3Consumer.class);
+        when(mockS3.poll(Mockito.anyInt(), Mockito.<Collection<TopicPartition>>any()))
+                .thenThrow(new OffsetOutOfRangeException(Collections.singletonMap(tpReset, 999L)));
+        tsConsumer.s3Consumer = mockS3;
+
+        tsConsumer.getPositions().put(tpReset, 999L);
+        tsConsumer.getPositions().put(tpOther, 321L);
+
+        assertThrows(OffsetOutOfRangeException.class, () -> tsConsumer.poll(Duration.ofMillis(100)));
+        assertEquals(999L, tsConsumer.getPositions().get(tpReset));
+        assertEquals(321L, tsConsumer.getPositions().get(tpOther));
+
+        tsConsumer.close();
+    }
+
+    private KafkaConsumer<String, String> createKafkaConsumer(String groupId, OffsetResetStrategy resetStrategy) {
+        Properties consumerProps = new Properties();
+        consumerProps.setProperty(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, sharedKafkaTestResource.getKafkaConnectString());
+        consumerProps.setProperty(ConsumerConfig.GROUP_ID_CONFIG, groupId);
+        consumerProps.setProperty(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
+        consumerProps.setProperty(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
+        consumerProps.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, resetStrategy.toString());
+        return new KafkaConsumer<>(consumerProps);
+    }
+
+    private void commitOffset(String groupId, TopicPartition tp, long offset) {
+        KafkaConsumer<String, String> committer = createKafkaConsumer(groupId, OffsetResetStrategy.EARLIEST);
+        try {
+            committer.assign(Collections.singleton(tp));
+            committer.poll(Duration.ofMillis(100));
+            committer.commitSync(Collections.singletonMap(tp, new OffsetAndMetadata(offset)));
+        } finally {
+            committer.close();
+        }
+    }
+
+    /**
+     * Test that KAFKA_ONLY mode + auto.offset.reset=earliest will reset to earliest offsets on Kafka if KafkaConsumer throws an OffsetOutOfRangeException.
+     * @throws Exception
+     */
+    @Test
+    void testPollOffsetResetEarliestKafkaOnlyResetsToBeginning() throws Exception {
+        String groupId = "poll-reset-earliest-kafka-only-" + System.currentTimeMillis();
+        int initialRecords = 5;
+        TopicPartition tpReset = new TopicPartition(TEST_TOPIC_A, 0);
+        TopicPartition tpOther = new TopicPartition(TEST_TOPIC_A, 1);
+
+        sendTestData(TEST_TOPIC_A, tpReset.partition(), initialRecords);
+        sendTestData(TEST_TOPIC_A, tpOther.partition(), 3);
+
+        commitOffset(groupId, tpReset, initialRecords + 20);
+
+        Properties props = getStandardTieredStorageConsumerProperties(TieredStorageConsumer.TieredStorageMode.KAFKA_ONLY, sharedKafkaTestResource.getKafkaConnectString());
+        props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, OffsetResetStrategy.EARLIEST.toString());
+        props.setProperty(ConsumerConfig.GROUP_ID_CONFIG, groupId);
+        tsConsumer = new TieredStorageConsumer<>(props);
+        tsConsumer.assign(new HashSet<>(Arrays.asList(tpReset, tpOther)));
+        tsConsumer.seek(tpReset, initialRecords + 20);
+        assertEquals(initialRecords + 20, tsConsumer.position(tpReset));
+        assertEquals(0, tsConsumer.position(tpOther));
+
+        List<ConsumerRecord<String, String>> collected = new ArrayList<>();
+        long deadline = System.currentTimeMillis() + 5000;
+        while (collected.size() < initialRecords && System.currentTimeMillis() < deadline) {
+            ConsumerRecords<String, String> records = tsConsumer.poll(Duration.ofMillis(500));
+            collected.addAll(records.records(tpReset));
+        }
+        assertEquals(initialRecords, collected.size(), "Should replay from earliest offsets");
+        assertEquals(0L, collected.get(0).offset(), "First replayed offset should be earliest");
+        assertEquals(initialRecords, tsConsumer.getPositions().get(tpReset));
+        assertEquals(3, tsConsumer.getPositions().get(tpOther));
+
+        tsConsumer.close();
+    }
+
+    /**
+     * Test that KAFKA_ONLY mode + auto.offset.reset=latest will reset to latest offsets on Kafka if KafkaConsumer throws an OffsetOutOfRangeException.
+     * @throws Exception
+     */
+    @Test
+    void testPollOffsetResetLatestKafkaOnlyResetsToLatest() throws Exception {
+        String groupId = "poll-reset-latest-kafka-only-" + System.currentTimeMillis();
+        int initialRecords = 5;
+        TopicPartition tpReset = new TopicPartition(TEST_TOPIC_A, 0);
+
+        sendTestData(TEST_TOPIC_A, tpReset.partition(), initialRecords);
+
+        commitOffset(groupId, tpReset, initialRecords + 20);
+
+        Properties props = getStandardTieredStorageConsumerProperties(TieredStorageConsumer.TieredStorageMode.KAFKA_ONLY, sharedKafkaTestResource.getKafkaConnectString());
+        props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, OffsetResetStrategy.LATEST.toString());
+        props.setProperty(ConsumerConfig.GROUP_ID_CONFIG, groupId);
+        tsConsumer = new TieredStorageConsumer<>(props);
+        tsConsumer.assign(Collections.singleton(tpReset));
+
+        ConsumerRecords<String, String> firstPoll = tsConsumer.poll(Duration.ofMillis(500));
+        assertEquals(0, firstPoll.count(), "First poll should be empty after reset");
+
+        int extraRecords = 3;
+        sendTestData(TEST_TOPIC_A, tpReset.partition(), extraRecords);
+
+        List<ConsumerRecord<String, String>> collected = new ArrayList<>();
+        long deadline = System.currentTimeMillis() + 5000;
+        while (collected.size() < extraRecords && System.currentTimeMillis() < deadline) {
+            ConsumerRecords<String, String> records = tsConsumer.poll(Duration.ofMillis(500));
+            collected.addAll(records.records(tpReset));
+        }
+        assertEquals(extraRecords, collected.size(), "Should only see new records after latest reset");
+        assertEquals(initialRecords, collected.get(0).offset(), "First record after reset should start at log end");
+        assertEquals(initialRecords + extraRecords, tsConsumer.getPositions().get(tpReset));
+
+        tsConsumer.close();
+    }
+
+    /**
+     * Test that KAFKA_ONLY mode + auto.offset.reset=none will throw an OffsetOutOfRangeException if KafkaConsumer throws an OffsetOutOfRangeException.
+     * @throws Exception
+     */
+    @Test
+    void testPollOffsetResetNoneKafkaOnlyThrows() throws Exception {
+        String groupId = "poll-reset-none-kafka-only-" + System.currentTimeMillis();
+        TopicPartition tpReset = new TopicPartition(TEST_TOPIC_A, 0);
+
+        sendTestData(TEST_TOPIC_A, tpReset.partition(), 100);
+
+        Properties props = getStandardTieredStorageConsumerProperties(TieredStorageConsumer.TieredStorageMode.KAFKA_ONLY, sharedKafkaTestResource.getKafkaConnectString());
+        props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, OffsetResetStrategy.NONE.toString());
+        props.setProperty(ConsumerConfig.GROUP_ID_CONFIG, groupId);
+        tsConsumer = new TieredStorageConsumer<>(props);
+        tsConsumer.assign(Collections.singleton(tpReset));
+        tsConsumer.seek(tpReset, 105);
+
+        assertThrows(OffsetOutOfRangeException.class, () -> tsConsumer.poll(Duration.ofMillis(500)));
 
         tsConsumer.close();
     }
@@ -1376,7 +1596,6 @@ public class TestTieredStorageConsumerIntegration extends TestS3Base {
         properties.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, OffsetResetStrategy.EARLIEST.toString());
         properties.setProperty(TieredStorageConsumerConfig.TIERED_STORAGE_MODE_CONFIG, mode.toString());
         properties.setProperty(TieredStorageConsumerConfig.KAFKA_CLUSTER_ID_CONFIG, TEST_CLUSTER);
-        properties.setProperty(TieredStorageConsumerConfig.OFFSET_RESET_CONFIG, TieredStorageConsumer.OffsetReset.EARLIEST.toString());
         properties.setProperty(TieredStorageConsumerConfig.STORAGE_SERVICE_ENDPOINT_PROVIDER_CLASS_CONFIG, MockS3StorageServiceEndpointProvider.class.getName());
         properties.setProperty(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
         return properties;

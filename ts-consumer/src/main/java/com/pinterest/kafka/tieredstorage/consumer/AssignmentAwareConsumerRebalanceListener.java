@@ -4,6 +4,7 @@ import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.consumer.ConsumerRebalanceListener;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
+import org.apache.kafka.clients.consumer.OffsetResetStrategy;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
@@ -12,7 +13,6 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Properties;
-import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -28,20 +28,20 @@ public class AssignmentAwareConsumerRebalanceListener implements ConsumerRebalan
     private final Properties properties;
     private final Map<TopicPartition, Long> position;
     private final Map<TopicPartition, Long> committed;
-    private final TieredStorageConsumer.OffsetReset offsetReset;
+    private final OffsetResetStrategy offsetResetStrategy;
     private final AtomicBoolean isPartitionAssignmentComplete = new AtomicBoolean(false);
     private ConsumerRebalanceListener customListener = null;
 
     public AssignmentAwareConsumerRebalanceListener(
             KafkaConsumer kafkaConsumer, String consumerGroup, Properties properties,
             Map<TopicPartition, Long> position,
-            Map<TopicPartition, Long> committed, TieredStorageConsumer.OffsetReset offsetReset) {
+            Map<TopicPartition, Long> committed, OffsetResetStrategy offsetResetStrategy) {
         this.kafkaConsumer = kafkaConsumer;
         this.consumerGroup = consumerGroup;
         this.properties = properties;
         this.position = position;
         this.committed = committed;
-        this.offsetReset = offsetReset;
+        this.offsetResetStrategy = offsetResetStrategy;
     }
 
     protected void setCustomRebalanceListener(ConsumerRebalanceListener customListener) {
@@ -109,7 +109,7 @@ public class AssignmentAwareConsumerRebalanceListener implements ConsumerRebalan
      * @param topicPartition the topic partition to reset the offset for
      */
     private void resetOffset(TopicPartition topicPartition) {
-        switch (offsetReset) {
+        switch (offsetResetStrategy) {
             case LATEST:
                 // consumption should start from the end of kafka log
                 long kafkaOffset = (long) kafkaConsumer.endOffsets(Collections.singleton(topicPartition)).get(topicPartition);

@@ -285,7 +285,6 @@ public class S3PartitionConsumer<K, V> {
                         position = lastSeenOffset;
                 }
                 Headers headers = new RecordHeaders();
-                // TODO: Confirm if the below line is needed.
                 Arrays.stream(record.headers()).forEach(headers::add);
 
                 records.add(new ConsumerRecord<>(

@@ -2,12 +2,14 @@ package com.pinterest.kafka.tieredstorage.common;
 
 import com.codahale.metrics.Histogram;
 import com.codahale.metrics.MetricRegistry;
-import com.pinterest.kafka.tieredstorage.common.Utils;
 import org.junit.jupiter.api.Test;
 
+import java.nio.file.NoSuchFileException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.TimeoutException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -68,5 +70,23 @@ public class TestUtils {
 
         assertFalse(Utils.getBaseOffsetFromFilename("offset.wm").isPresent());
         assertFalse(Utils.getBaseOffsetFromFilename("/directory/asdf/_metadata").isPresent());
+    }
+
+    @Test
+    public void testIsAssignableFromRecursive() {
+        boolean result = Utils.isAssignableFromRecursive(new Throwable(), NoSuchFileException.class);
+        assertFalse(result);
+
+        result = Utils.isAssignableFromRecursive(new Throwable(new CompletionException(new TimeoutException("test"))), NoSuchFileException.class);
+        assertFalse(result);
+
+        result = Utils.isAssignableFromRecursive(new Throwable(new CompletionException(new NoSuchFileException("test"))), NoSuchFileException.class);
+        assertTrue(result);
+
+        result = Utils.isAssignableFromRecursive(new Exception(), Throwable.class);
+        assertTrue(result);
+
+        result = Utils.isAssignableFromRecursive(new Throwable(), Exception.class);
+        assertFalse(result);
     }
 }
