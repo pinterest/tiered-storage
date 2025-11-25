@@ -184,7 +184,7 @@ public class S3PartitionConsumer<K, V> {
         Triple<String, String, Long> s3PathForPosition = getS3PathForPosition(position);
 
         if (activeS3Offset > position || s3PathForPosition == null) {
-            LOG.warn(String.format("Offset %s is out of range [%s, %s]", position, offsetKeyMap.firstEntry().getKey(), offsetKeyMap.lastEntry().getKey()));
+            LOG.warn(String.format("Offset %s is out of range", position));
             MetricRegistryManager.getInstance(metricsConfiguration).updateCounter(
                     topicPartition.topic(), topicPartition.partition(),
                     ConsumerMetrics.OFFSET_CONSUMPTION_MISSED_METRIC,
@@ -192,7 +192,7 @@ public class S3PartitionConsumer<K, V> {
                     "ts=true", "group=" + consumerGroup, "from=" + this.position
             );
             throw new OffsetOutOfRangeException(String.format(
-                "Offset %s is out of range [%s, %s]", position, offsetKeyMap.firstEntry().getKey(), offsetKeyMap.lastEntry().getKey()), Collections.singletonMap(topicPartition, position));
+                "Offset %s is out of range", position), Collections.singletonMap(topicPartition, position));
         }
 
         if (s3Path != null && s3Path.equals(s3PathForPosition)) {
