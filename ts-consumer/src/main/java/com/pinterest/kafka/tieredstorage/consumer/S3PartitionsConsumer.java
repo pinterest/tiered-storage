@@ -136,7 +136,7 @@ public class S3PartitionsConsumer<K, V> {
             tieredStorageRecords.addRecords(topicPartition, records);
         }
         if (!outOfRangePartitions.isEmpty()) {
-            throw new OffsetOutOfRangeException("Offset out of range", outOfRangePartitions);
+            throw new OffsetOutOfRangeException(String.format("Offset out of range: " + outOfRangePartitions), outOfRangePartitions);
         }
         if (tieredStorageRecords.records().count() > 0) {
             s3PartitionConsumerMap.forEach((tp, c) -> {

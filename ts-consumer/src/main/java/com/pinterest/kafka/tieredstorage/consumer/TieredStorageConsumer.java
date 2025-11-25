@@ -392,7 +392,23 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
         records.clear();
         s3Consumer.assign(kafkaConsumer.assignment());
         s3Consumer.setPositions(positions);
-        records.addRecords(s3Consumer.poll(maxRecordsPerPoll, kafkaConsumer.assignment()));
+        ConsumerRecords<K, V> pollRecords = ConsumerRecords.empty();
+        try {
+            pollRecords = s3Consumer.poll(maxRecordsPerPoll, kafkaConsumer.assignment());
+        } catch (OffsetOutOfRangeException e) {
+            LOG.warn(String.format("Offsets out of range: %s, will reset offsets based on offsetResetStrategy=%s", e.offsetOutOfRangePartitions(), offsetResetStrategy));
+            switch (offsetResetStrategy) {
+                case LATEST:
+                    this.seekToEnd(e.partitions());
+                    break;
+                case NONE:
+                    throw new OffsetOutOfRangeException("No offset found for partitions at positions", positions);
+                case EARLIEST:
+                    this.seekToBeginning(e.partitions());
+                    break;
+            }
+        }
+        records.addRecords(pollRecords);
         ts.set(true);
         return records.records();
     }
@@ -434,7 +450,7 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
         try {
             pollRecords = s3Consumer.poll(maxRecordsPerPoll, exception.partitions());
         } catch (OffsetOutOfRangeException e) {
-            LOG.warn("Will reset offsets based on strategy: " + offsetResetStrategy + " for partitions: " + e.partitions());
+            LOG.warn(String.format("Offsets out of range: %s, will reset offsets based on offsetResetStrategy=%s", e.offsetOutOfRangePartitions(), offsetResetStrategy));
             switch (offsetResetStrategy) {
                 case LATEST:
                     KafkaConsumerUtils.resetOffsetToLatest(kafkaConsumer, e.partitions());
