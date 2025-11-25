@@ -125,7 +125,7 @@ public class S3PartitionsConsumer<K, V> {
             try {
                 records = s3PartitionConsumerMap.get(topicPartition).poll(toPartiallyConsume, false);
             } catch (Exception e) {
-                if (Utils.isAssignableFromRecursive(e, NoSuchKeyException.class)) {
+                if (Utils.isAssignableFromRecursive(e, NoSuchKeyException.class) || Utils.isAssignableFromRecursive(e, OffsetOutOfRangeException.class)) {
                     outOfRangePartitions.put(topicPartition, s3PartitionConsumerMap.get(topicPartition).getPosition());
                 } else {
                     throw e;
