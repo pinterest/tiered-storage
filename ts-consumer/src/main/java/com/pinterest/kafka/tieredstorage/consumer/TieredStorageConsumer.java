@@ -453,7 +453,7 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
             LOG.warn(String.format("Offsets out of range: %s, will reset offsets based on offsetResetStrategy=%s", e.offsetOutOfRangePartitions(), offsetResetStrategy));
             switch (offsetResetStrategy) {
                 case LATEST:
-                    KafkaConsumerUtils.resetOffsetToLatest(kafkaConsumer, e.partitions());
+                    this.seekToEnd(exception.partitions());
                     break;
                 case NONE:
                     throw new OffsetOutOfRangeException("No offset found for partitions at positions", positions);
