@@ -390,10 +390,7 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
      */
     private ConsumerRecords<K, V> handleTieredStorageOnlyPoll(Duration timeout, AtomicBoolean ts) {
         records.clear();
-        s3Consumer.assign(kafkaConsumer.assignment());
-        s3Consumer.setPositions(positions);
-        records.addRecords(s3Consumer.poll(maxRecordsPerPoll, kafkaConsumer.assignment()));
-        ts.set(true);
+        records.addRecords(pollFromS3(ts, kafkaConsumer.assignment()));
         return records.records();
     }
 
@@ -428,16 +425,21 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
         if (exception.getClass() != NoOffsetForPartitionException.class && exception.getClass() != OffsetOutOfRangeException.class) {
             throw exception;
         }
-        s3Consumer.assign(exception.partitions());
+        ConsumerRecords<K, V> pollRecords = pollFromS3(ts, exception.partitions());
+        records.addRecords(pollRecords);
+    }
+
+    private ConsumerRecords<K, V> pollFromS3(AtomicBoolean ts, Collection<TopicPartition> partitions) {
+        s3Consumer.assign(partitions);
         s3Consumer.setPositions(positions);
         ConsumerRecords<K, V> pollRecords = ConsumerRecords.empty();
         try {
-            pollRecords = s3Consumer.poll(maxRecordsPerPoll, exception.partitions());
+            pollRecords = s3Consumer.poll(maxRecordsPerPoll, partitions);
         } catch (OffsetOutOfRangeException e) {
-            LOG.warn("Will reset offsets based on strategy: " + offsetResetStrategy + " for partitions: " + e.partitions());
+            LOG.warn(String.format("Offsets out of range: %s, will reset offsets based on offsetResetStrategy=%s", e.offsetOutOfRangePartitions(), offsetResetStrategy));
             switch (offsetResetStrategy) {
                 case LATEST:
-                    KafkaConsumerUtils.resetOffsetToLatest(kafkaConsumer, e.partitions());
+                    this.seekToEnd(e.partitions());
                     break;
                 case NONE:
                     throw new OffsetOutOfRangeException("No offset found for partitions at positions", positions);
@@ -448,10 +450,10 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
 
         } catch (Exception e) {
             LOG.error("Error polling from S3", e);
-            throw e;
+            throw new RuntimeException(e);
         }
-        records.addRecords(pollRecords);
         ts.set(true);
+        return pollRecords;
     }
 
     /**

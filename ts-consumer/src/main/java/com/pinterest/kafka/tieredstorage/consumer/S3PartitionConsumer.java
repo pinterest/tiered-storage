@@ -8,6 +8,7 @@ import org.apache.commons.lang3.tuple.Triple;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
+import org.apache.kafka.clients.consumer.OffsetOutOfRangeException;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.header.Headers;
 import org.apache.kafka.common.header.internals.RecordHeaders;
@@ -182,15 +183,16 @@ public class S3PartitionConsumer<K, V> {
     private void maybeSetS3Records(long position) throws NoS3ObjectException, IOException {
         Triple<String, String, Long> s3PathForPosition = getS3PathForPosition(position);
 
-        if (activeS3Offset > position) {
-            LOG.warn(String.format("Lost offsets for %s: [%s, %s]", topicPartition, this.position, activeS3Offset - 1));
+        if (activeS3Offset > position || s3PathForPosition == null) {
+            LOG.warn(String.format("Offset %s is out of range", position));
             MetricRegistryManager.getInstance(metricsConfiguration).updateCounter(
                     topicPartition.topic(), topicPartition.partition(),
                     ConsumerMetrics.OFFSET_CONSUMPTION_MISSED_METRIC,
                     activeS3Offset - this.position,
                     "ts=true", "group=" + consumerGroup, "from=" + this.position
             );
-            this.position = activeS3Offset;
+            throw new OffsetOutOfRangeException(String.format(
+                "Offset %s is out of range", position), Collections.singletonMap(topicPartition, position));
         }
 
         if (s3Path != null && s3Path.equals(s3PathForPosition)) {
@@ -201,8 +203,6 @@ public class S3PartitionConsumer<K, V> {
 
         s3Path = s3PathForPosition;
         LOG.debug(String.format("S3Path: %s", s3Path));
-        if (s3Path == null)
-            throw new NoS3ObjectException();
 
         int bytePositionInFile = s3OffsetIndexHandler.getMinimumBytePositionInFile(s3Path, this.position);
 
@@ -247,7 +247,7 @@ public class S3PartitionConsumer<K, V> {
             return Collections.emptyList();
         } catch (Exception e) {
             LOG.error("Unhandled exception while trying to set s3Records", e);
-            return Collections.emptyList();
+            throw e;
         }
 
         long recordCount = 0;
