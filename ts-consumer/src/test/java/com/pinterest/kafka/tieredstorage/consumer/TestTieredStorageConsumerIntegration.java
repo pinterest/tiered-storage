@@ -52,6 +52,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 
@@ -1167,6 +1168,7 @@ public class TestTieredStorageConsumerIntegration extends TestS3Base {
         when(mockKafka.poll(Mockito.any(Duration.class)))
                 .thenThrow(new OffsetOutOfRangeException(Collections.singletonMap(tpReset, 999L)))
                 .thenReturn(new ConsumerRecords<>(secondPollData));
+        when(mockKafka.endOffsets(eq(Collections.singleton(tpReset)), any(Duration.class))).thenReturn(Collections.singletonMap(tpReset, 500L));
         Mockito.doNothing().when(mockKafka).seekToEnd(Mockito.<Collection<TopicPartition>>any());
 
         tsConsumer.getPositions().put(tpReset, 999L);
@@ -1175,8 +1177,7 @@ public class TestTieredStorageConsumerIntegration extends TestS3Base {
         ConsumerRecords<String, String> firstPoll = tsConsumer.poll(Duration.ofMillis(100));
         assertEquals(0, firstPoll.count(), "First poll should be empty after reset");
 
-        Mockito.verify(mockKafka).seekToEnd(Mockito.<Collection<TopicPartition>>any());
-        assertEquals(999L, tsConsumer.getPositions().get(tpReset));
+        assertEquals(500L, tsConsumer.getPositions().get(tpReset));
         assertEquals(321L, tsConsumer.getPositions().get(tpOther));
 
         ConsumerRecords<String, String> secondPoll = tsConsumer.poll(Duration.ofMillis(100));

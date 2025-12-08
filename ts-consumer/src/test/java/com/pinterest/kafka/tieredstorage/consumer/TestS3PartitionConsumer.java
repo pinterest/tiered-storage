@@ -11,6 +11,7 @@ import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
+import org.apache.kafka.clients.consumer.OffsetOutOfRangeException;
 import org.apache.kafka.clients.consumer.OffsetResetStrategy;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.apache.kafka.common.serialization.StringDeserializer;
@@ -21,6 +22,7 @@ import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
@@ -31,6 +33,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 public class TestS3PartitionConsumer extends TestS3Base {
 
@@ -140,6 +143,28 @@ public class TestS3PartitionConsumer extends TestS3Base {
         }
         assertEquals(TEST_TOPIC_A_P0_NUM_RECORDS, numRecords); // based on log segment files
         closeS3Mocks();
+    }
+
+    @Test
+    void testPollThrowsOffsetOutOfRangeWhenPositionBeforeEarliest() {
+        putEmptyObjects(KAFKA_TOPIC, 0, 100L, 100L, 100L);
+
+        Properties properties = getConsumerProperties();
+        S3Utils.overrideS3Client(s3Client);
+        S3OffsetIndexHandler.overrideS3Client(s3Client);
+        String metricsReporterClassName = NoOpMetricsReporter.class.getName();
+        MetricsConfiguration metricsConfiguration = new MetricsConfiguration(true, metricsReporterClassName, null, null);
+        TopicPartition topicPartition = new TopicPartition(KAFKA_TOPIC, 0);
+        S3PartitionConsumer<byte[], byte[]> s3PartitionConsumer = new S3PartitionConsumer<>(getS3BasePrefixWithCluster(), topicPartition, CONSUMER_GROUP, properties, metricsConfiguration);
+
+        long earliestOffset = s3PartitionConsumer.beginningOffset();
+        assertEquals(100L, earliestOffset);
+
+        long outOfRangeOffset = earliestOffset - 10;
+        s3PartitionConsumer.setPosition(outOfRangeOffset);
+
+        OffsetOutOfRangeException exception = assertThrows(OffsetOutOfRangeException.class, () -> s3PartitionConsumer.poll(10));
+        assertEquals(Collections.singletonMap(topicPartition, outOfRangeOffset), exception.offsetOutOfRangePartitions());
     }
 
     @Test
