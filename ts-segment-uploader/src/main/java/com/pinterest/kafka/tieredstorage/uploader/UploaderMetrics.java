@@ -37,6 +37,7 @@ public class UploaderMetrics {
     public static final String WATCHER_LEADERSHIP_EXCEPTION_METRIC = UPLOADER_METRIC_PREFIX + "." + "watcher.leadership.exception";
     public static final String WATERMARK_FILE_UPLOAD_ERROR_METRIC = UPLOADER_METRIC_PREFIX + "." + "watermark.file.upload.error";
     public static final String SEGMENT_MANAGER_GC_DURATION_MS_METRIC = UPLOADER_METRIC_PREFIX + "." + "segment.manager.gc.duration.ms";
+    public static final String SEGMENT_MANAGER_GC_SUCCESS_COUNT_METRIC = UPLOADER_METRIC_PREFIX + "." + "segment.manager.gc.success.count";
     public static final String SEGMENT_MANAGER_GC_DELETION_FAILURE_COUNT_METRIC = UPLOADER_METRIC_PREFIX + "." + "segment.manager.gc.deletion.failure.count";
     public static final String SEGMENT_MANAGER_GC_EXCEPTION_METRIC = UPLOADER_METRIC_PREFIX + "." + "segment.manager.gc.exception";
     public static final String SEGMENT_MANAGER_LOG_START_OFFSET_METRIC = UPLOADER_METRIC_PREFIX + "." + "segment.manager.log.start.offset";

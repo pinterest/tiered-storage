@@ -330,7 +330,8 @@ public abstract class SegmentManager {
                     leadingPartition.partition(),
                     UploaderMetrics.SEGMENT_MANAGER_GC_EXCEPTION_METRIC,
                     "cluster=" + environmentProvider.clusterId(),
-                    "broker=" + environmentProvider.brokerId()
+                    "broker=" + environmentProvider.brokerId(),
+                    "exception=" + e.getClass().getName()
                 );
                 continue;
             } finally {
@@ -354,6 +355,13 @@ public abstract class SegmentManager {
             null,
             UploaderMetrics.SEGMENT_MANAGER_GC_DURATION_MS_METRIC,
             cycleDuration,
+            "cluster=" + environmentProvider.clusterId(),
+            "broker=" + environmentProvider.brokerId()
+        );
+        MetricRegistryManager.getInstance(config.getMetricsConfiguration()).incrementCounter(
+            null,
+            null,
+            UploaderMetrics.SEGMENT_MANAGER_GC_SUCCESS_COUNT_METRIC,
             "cluster=" + environmentProvider.clusterId(),
             "broker=" + environmentProvider.brokerId()
         );
