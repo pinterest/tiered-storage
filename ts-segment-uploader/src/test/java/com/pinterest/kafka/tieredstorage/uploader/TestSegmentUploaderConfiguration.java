@@ -76,5 +76,7 @@ public class TestSegmentUploaderConfiguration {
         assertEquals(43200, config.getSegmentManagerGcRetentionSeconds("test_topic_b"));
         assertEquals(7200, config.getSegmentManagerGcRetentionSeconds(null));
         assertEquals(7200, config.getSegmentManagerGcRetentionSeconds(""));
+        assertEquals(12345, config.getSegmentManagerGcRetentionSeconds("test.topic.c"));
+        assertEquals(7200, config.getSegmentManagerGcRetentionSeconds("test.topic.c.not.found"));
     }
 }
