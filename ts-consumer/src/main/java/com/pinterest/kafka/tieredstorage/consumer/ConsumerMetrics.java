@@ -12,4 +12,5 @@ public class ConsumerMetrics {
     public static final String S3_LIST_OBJECTS_LATENCY_METRIC = CONSUMER_METRIC_PREFIX + "." + "s3.listObjects.latency.ms";
     public static final String S3_LIST_OBJECTS_CALLS_METRIC = CONSUMER_METRIC_PREFIX + "." + "s3.listObjects.calls";
     public static final String CONSUMER_POLL_TIME_MS_METRIC = CONSUMER_METRIC_PREFIX + "." + "poll.time.ms";
+    public static final String S3_LOAD_BATCH_COUNT_METRIC = CONSUMER_METRIC_PREFIX + "." + "s3.load.batch.count";
 }

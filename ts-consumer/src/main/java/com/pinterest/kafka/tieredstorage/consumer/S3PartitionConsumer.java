@@ -262,6 +262,13 @@ public class S3PartitionConsumer<K, V> {
                 LOG.info(String.format("Loading new batch from s3Path=%s, position=%s", s3Path, position));
                 int startBytePosition = s3OffsetIndexHandler.getMinimumBytePositionInFile(s3Path, position);
                 activeBatchesIterator = s3Records.batchesFrom(startBytePosition).iterator();
+                MetricRegistryManager.getInstance(metricsConfiguration).incrementCounter(
+                        topicPartition.topic(),
+                        topicPartition.partition(),
+                        ConsumerMetrics.S3_LOAD_BATCH_COUNT_METRIC,
+                        "ts=true",
+                        "offset=" + position
+                );
             } else {
                 LOG.debug("Re-using activeBatchIterator");
             }
