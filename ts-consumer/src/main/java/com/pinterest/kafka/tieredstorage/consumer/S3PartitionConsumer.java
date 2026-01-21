@@ -266,8 +266,7 @@ public class S3PartitionConsumer<K, V> {
                         topicPartition.topic(),
                         topicPartition.partition(),
                         ConsumerMetrics.S3_LOAD_BATCH_COUNT_METRIC,
-                        "ts=true",
-                        "offset=" + position
+                        "ts=true"
                 );
             } else {
                 LOG.debug("Re-using activeBatchIterator");
