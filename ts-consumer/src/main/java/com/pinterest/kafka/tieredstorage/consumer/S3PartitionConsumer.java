@@ -40,6 +40,7 @@ import java.util.concurrent.ConcurrentSkipListSet;
 public class S3PartitionConsumer<K, V> {
     private static final Logger LOG = LogManager.getLogger(S3PartitionConsumer.class.getName());
     private static final long DEFAULT_S3_METADATA_RELOAD_INTERVAL_MS = 3600000; // 1 hour
+    private final String kafkaClusterId;
     private String location;
     private final TopicPartition topicPartition;
     private long position;
@@ -75,6 +76,7 @@ public class S3PartitionConsumer<K, V> {
         this.metricsConfiguration = metricsConfiguration;
         this.keyDeserializer = keyDeserializer;
         this.valueDeserializer = valueDeserializer;
+        this.kafkaClusterId = (String) properties.getOrDefault(TieredStorageConsumerConfig.KAFKA_CLUSTER_ID_CONFIG, "unknown");
         initializeDeserializers(consumerConfig);
         LOG.info(String.format("Created S3PartitionConsumer for %s with maxPartitionFetchSizeBytes=%s and s3MetadataReloadIntervalMs=%s", topicPartition, maxPartitionFetchSizeBytes, s3MetadataReloadIntervalMs));
     }
@@ -267,7 +269,8 @@ public class S3PartitionConsumer<K, V> {
                         topicPartition.partition(),
                         ConsumerMetrics.S3_LOAD_BATCH_COUNT_METRIC,
                         "ts=true",
-                        "group=" + consumerGroup
+                        "group=" + consumerGroup,
+                        "cluster=" + kafkaClusterId
                 );
             } else {
                 LOG.debug("Re-using activeBatchIterator");

@@ -75,7 +75,7 @@ public class TieredStorageConsumer<K, V> implements Consumer<K, V> {
     private final TieredStorageRecords<K, V> records = new TieredStorageRecords<>();
     private final MetricsConfiguration metricsConfiguration;
     private int s3PrefixEntropyNumBits = -1;
-    private String consumerGroup;
+    private final String consumerGroup;
 
     public TieredStorageConsumer(Properties properties) throws IOException, ClassNotFoundException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
         this(properties, null, null);
