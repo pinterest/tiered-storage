@@ -210,7 +210,7 @@ public class S3PartitionConsumer<K, V> {
 
         int bytePositionInFile = s3OffsetIndexHandler.getMinimumBytePositionInFile(s3Path, this.position);
 
-        resetActiveBatchIterator();
+        resetBatchIterators();
         s3Records = S3Records.open(
                 s3Path.getLeft(),
                 s3Path.getMiddle(),
@@ -596,7 +596,7 @@ public class S3PartitionConsumer<K, V> {
         if (this.s3Records != null) {
             this.s3Records.close();
         }
-        resetActiveBatchIterator();
+        resetBatchIterators();
     }
 
     /**
@@ -608,7 +608,8 @@ public class S3PartitionConsumer<K, V> {
             this.location = location;
     }
 
-    private void resetActiveBatchIterator() {
+    private void resetBatchIterators() {
         activeBatchesIterator = null;
+        activeBatchIterator = null;
     }
 }
