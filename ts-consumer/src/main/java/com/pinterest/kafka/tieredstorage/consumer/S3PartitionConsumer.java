@@ -40,6 +40,7 @@ import java.util.concurrent.ConcurrentSkipListSet;
 public class S3PartitionConsumer<K, V> {
     private static final Logger LOG = LogManager.getLogger(S3PartitionConsumer.class.getName());
     private static final long DEFAULT_S3_METADATA_RELOAD_INTERVAL_MS = 3600000; // 1 hour
+    private final String kafkaClusterId;
     private String location;
     private final TopicPartition topicPartition;
     private long position;
@@ -51,6 +52,8 @@ public class S3PartitionConsumer<K, V> {
     private long lastOffsetKeyMapReloadTimestamp = -1;
     private final String consumerGroup;
     private S3Records s3Records;
+    private Iterator<S3ChannelRecordBatch> activeBatchesIterator;
+    private Iterator<Record> activeBatchIterator;
     private final int maxPartitionFetchSizeBytes;
     private final long s3MetadataReloadIntervalMs;
     private String latestS3Object = null;
@@ -73,6 +76,7 @@ public class S3PartitionConsumer<K, V> {
         this.metricsConfiguration = metricsConfiguration;
         this.keyDeserializer = keyDeserializer;
         this.valueDeserializer = valueDeserializer;
+        this.kafkaClusterId = (String) properties.getOrDefault(TieredStorageConsumerConfig.KAFKA_CLUSTER_ID_CONFIG, "unknown");
         initializeDeserializers(consumerConfig);
         LOG.info(String.format("Created S3PartitionConsumer for %s with maxPartitionFetchSizeBytes=%s and s3MetadataReloadIntervalMs=%s", topicPartition, maxPartitionFetchSizeBytes, s3MetadataReloadIntervalMs));
     }
@@ -206,6 +210,7 @@ public class S3PartitionConsumer<K, V> {
 
         int bytePositionInFile = s3OffsetIndexHandler.getMinimumBytePositionInFile(s3Path, this.position);
 
+        resetBatchIterators();
         s3Records = S3Records.open(
                 s3Path.getLeft(),
                 s3Path.getMiddle(),
@@ -254,17 +259,42 @@ public class S3PartitionConsumer<K, V> {
         long fetchSizeBytes = 0;
         boolean skipped = false;
 
-        Iterator<S3ChannelRecordBatch> batches =
-                s3Records.batchesFrom(s3OffsetIndexHandler.getMinimumBytePositionInFile(s3Path, position)).iterator();
-        if (!batches.hasNext()) {
+        if (activeBatchesIterator == null || !activeBatchesIterator.hasNext()) {
+            if (activeBatchIterator == null || !activeBatchIterator.hasNext()) {
+                LOG.info(String.format("Loading new batch from s3Path=%s, position=%s", s3Path, position));
+                int startBytePosition = s3OffsetIndexHandler.getMinimumBytePositionInFile(s3Path, position);
+                activeBatchesIterator = s3Records.batchesFrom(startBytePosition).iterator();
+                MetricRegistryManager.getInstance(metricsConfiguration).incrementCounter(
+                        topicPartition.topic(),
+                        topicPartition.partition(),
+                        ConsumerMetrics.S3_LOAD_BATCH_COUNT_METRIC,
+                        "ts=true",
+                        "group=" + consumerGroup,
+                        "cluster=" + kafkaClusterId
+                );
+            } else {
+                LOG.debug("Re-using activeBatchIterator");
+            }
         }
 
         long lastSeenOffset = -1;
         List<ConsumerRecord<K, V>> records = new ArrayList<>();
         LOG.debug(String.format("For consuming from offset %s will be processing S3 object %s", position, s3Path));
-        while (batches.hasNext() && (shouldReadWholeObject || (recordCount < maxRecords && fetchSizeBytes < maxPartitionFetchSizeBytes))) {
-            S3ChannelRecordBatch batch = batches.next();
-            for (Record record : batch) {
+
+        while (shouldReadWholeObject || (recordCount < maxRecords && fetchSizeBytes < maxPartitionFetchSizeBytes)) {
+            if (activeBatchIterator == null || !activeBatchIterator.hasNext()) {
+                if (activeBatchesIterator != null && !activeBatchesIterator.hasNext()) {
+                    LOG.debug(String.format("Short-circuit consumption loop due to activeBatchesIterator and activeBatchIterator exhausted, topicPartition=%s, position=%s", topicPartition, position));
+                    break;
+                }
+                S3ChannelRecordBatch batch = activeBatchesIterator != null ? activeBatchesIterator.next() : null;
+                activeBatchIterator = batch != null ? batch.iterator() : null;
+            }
+            if (activeBatchIterator == null) {
+                break;
+            }
+            while (activeBatchIterator.hasNext()) {
+                Record record = activeBatchIterator.next();
                 lastSeenOffset = record.offset();
 
                 // skip earlier records
@@ -566,6 +596,7 @@ public class S3PartitionConsumer<K, V> {
         if (this.s3Records != null) {
             this.s3Records.close();
         }
+        resetBatchIterators();
     }
 
     /**
@@ -575,5 +606,10 @@ public class S3PartitionConsumer<K, V> {
     public void update(String location) {
         if (!this.location.equals(location))
             this.location = location;
+    }
+
+    private void resetBatchIterators() {
+        activeBatchesIterator = null;
+        activeBatchIterator = null;
     }
 }

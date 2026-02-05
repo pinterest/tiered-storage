@@ -5,7 +5,6 @@ import com.pinterest.kafka.tieredstorage.common.SegmentUtils;
 import com.pinterest.kafka.tieredstorage.common.Utils;
 import com.pinterest.kafka.tieredstorage.common.metadata.TimeIndex;
 import com.pinterest.kafka.tieredstorage.common.metadata.TopicPartitionMetadata;
-
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.record.S3Records;
 import org.apache.log4j.LogManager;

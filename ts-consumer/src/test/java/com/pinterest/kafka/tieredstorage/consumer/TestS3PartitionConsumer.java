@@ -22,6 +22,7 @@ import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
+import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
@@ -135,7 +136,7 @@ public class TestS3PartitionConsumer extends TestS3Base {
                 new StringDeserializer(), new StringDeserializer());
         List<ConsumerRecord<String, String>> records;
         int numRecords = 0;
-        while (!(records = s3PartitionConsumer.poll(100)).isEmpty()) {
+        while (!(records = s3PartitionConsumer.poll(50)).isEmpty()) {
             for (ConsumerRecord<String, String> record : records) {
                 CommonTestUtils.validateRecordContent(CommonTestUtils.RecordContentType.TIERED_STORAGE, record);
                 numRecords++;
@@ -300,10 +301,9 @@ public class TestS3PartitionConsumer extends TestS3Base {
         properties.setProperty(ConsumerConfig.CLIENT_ID_CONFIG, CLIENT_ID);
         properties.setProperty(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, Integer.toString(MAX_POLL_RECORDS));
         properties.setProperty(ConsumerConfig.MAX_PARTITION_FETCH_BYTES_CONFIG, Long.toString(MAX_PARTITION_FETCH_BYTES));
-        properties.setProperty(TieredStorageConsumerConfig.TIERED_STORAGE_MODE_CONFIG, TieredStorageConsumer.TieredStorageMode.KAFKA_PREFERRED.toString());
+        properties.setProperty(TieredStorageConsumerConfig.TIERED_STORAGE_MODE_CONFIG, String.valueOf(TieredStorageConsumer.TieredStorageMode.KAFKA_PREFERRED));
         properties.setProperty(TieredStorageConsumerConfig.KAFKA_CLUSTER_ID_CONFIG, KAFKA_CLUSTER_ID);
         properties.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, OffsetResetStrategy.EARLIEST.toString());
         return properties;
     }
-
 }
