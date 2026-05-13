@@ -281,6 +281,14 @@ public abstract class SegmentManager {
                 if (cutoffEntry == null) {
                     // nothing is expired according to metadata timeindex
                     LOG.info(String.format("No segments are expired for topicPartition=%s", leadingPartition));
+                    MetricRegistryManager.getInstance(config.getMetricsConfiguration()).updateCounter(
+                            leadingPartition.topic(),
+                            leadingPartition.partition(),
+                            UploaderMetrics.SEGMENT_MANAGER_LOG_START_OFFSET_METRIC,
+                            timeIndex.getFirstEntry() == null ? -1L : timeIndex.getFirstEntry().getBaseOffset(),
+                            "cluster=" + environmentProvider.clusterId(),
+                            "broker=" + environmentProvider.brokerId()
+                    );
                     continue;
                 }
                 cutoffOffset = cutoffEntry.getBaseOffset();    // everything including and before this offset should be removed
